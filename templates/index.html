@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}Imperial Collection: Псковский берег - Три грани настоящего отдыха{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section" style="background-image: url('https://sfile.chatglm.cn/images-ppt/5f816eb42a51.jpg')">
+    <div class="hero-overlay"></div>
+    <div class="container h-100 d-flex align-items-center">
+        <div class="hero-content text-center">
+            <h1 class="hero-title mb-4">Imperial Collection</h1>
+            <p class="hero-subtitle mb-2">Псковский берег</p>
+            <div class="hero-divider mx-auto mb-4"></div>
+            <p class="hero-tagline mb-5">Три грани настоящего отдыха</p>
+            <a href="#properties" class="btn btn-primary btn-lg px-5 py-3">
+                <i class="bi bi-arrow-down-circle me-2"></i> Выбрать отдых
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Properties Section -->
+<section id="properties" class="properties-section py-5">
+    <div class="container">
+        <div class="text-center mb-5">
+            <h2 class="section-title">Наши объекты</h2>
+            <p class="section-subtitle">Три уникальных места для вашего идеального отдыха</p>
+        </div>
+        
+        <div class="row g-4">
+            {% for property in properties %}
+            <div class="col-lg-4 col-md-6">
+                <div class="property-card h-100">
+                    <div class="property-image-wrapper">
+                        <img src="{{ property.image_url }}" alt="{{ property.name }}" class="property-image">
+                        <div class="property-badge">
+                            {% if property.property_type == 'hunting' %}
+                                <i class="bi bi-crosshair"></i> Охота
+                            {% elif property.property_type == 'mansion' %}
+                                <i class="bi bi-building"></i> Премиум
+                            {% else %}
+                                <i class="bi bi-house-heart"></i> Традиции
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="property-body">
+                        <h3 class="property-title">{{ property.name }}</h3>
+                        <p class="property-location mb-3">
+                            <i class="bi bi-geo-alt-fill"></i> {{ property.location }}
+                        </p>
+                        <p class="property-description">{{ property.short_description }}</p>
+                        
+                        <div class="property-features mb-3">
+                            {% for feature in property.features|from_json %}
+                                <span class="feature-tag">{{ feature }}</span>
+                            {% endfor %}
+                        </div>
+                        
+                        <div class="property-meta">
+                            <div class="meta-item">
+                                <i class="bi bi-people-fill"></i>
+                                <span>до {{ property.capacity }} гостей</span>
+                            </div>
+                            <div class="meta-item">
+                                <i class="bi bi-currency-ruble"></i>
+                                <span>{{ property.price_per_night|format_price }} ₽/ночь</span>
+                            </div>
+                        </div>
+                        
+                        <div class="property-actions">
+                            <a href="{{ url_for('property_detail', property_id=property.id) }}" 
+                               class="btn btn-outline-primary w-100">
+                                Подробнее <i class="bi bi-arrow-right ms-2"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- About Section -->
+<section id="about" class="about-section py-5">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-6 mb-4 mb-lg-0">
+                <h2 class="section-title text-start">Зонтичный бренд</h2>
+                <p class="lead mb-4">Объединение разных миров</p>
+                <p class="text-muted mb-4">
+                    Сайт — это не каталог недвижимости, а Клуб путешественников по Псковскому краю. 
+                    Три объекта под одним брендом — каждый со своей уникальной атмосферой, 
+                    но с общими стандартами качества и сервиса.
+                </p>
+                
+                <div class="feature-list">
+                    <div class="feature-item">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                        <span>Сохранение индивидуальности каждого объекта</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                        <span>Единый высокий уровень сервиса</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                        <span>Возможность комбинирования впечатлений</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <img src="https://sfile.chatglm.cn/images-ppt/c551371cc184.jpeg" 
+                     alt="Псковская область" 
+                     class="img-fluid rounded shadow-lg">
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Combo Tours Section -->
+<section class="combo-section py-5 bg-light">
+    <div class="container">
+        <div class="text-center mb-5">
+            <h2 class="section-title">Комбо-туры</h2>
+            <p class="section-subtitle">Выходные 360° - максимум впечатлений</p>
+        </div>
+        
+        <div class="row g-4">
+            <div class="col-md-6">
+                <div class="combo-card">
+                    <div class="combo-icon mb-3">
+                        <i class="bi bi-sunrise"></i>
+                    </div>
+                    <h4 class="combo-title">Для активного отдыха</h4>
+                    <p class="text-muted">
+                        Пятница-суббота: Охота/рыбалка на Великой.<br>
+                        Суббота-воскресенье: Переезд в особняк, баня и теннис.
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="combo-card">
+                    <div class="combo-icon mb-3">
+                        <i class="bi bi-people"></i>
+                    </div>
+                    <h4 class="combo-title">Для семейного отдыха</h4>
+                    <p class="text-muted">
+                        Родители: в Себеже (баня, теннис).<br>
+                        Дети: в Деревне Остров (с животными, свежим воздухом).
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Contact Section -->
+<section id="contact" class="contact-section py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-6 mb-4 mb-lg-0">
+                <h2 class="section-title text-start">Свяжитесь с нами</h2>
+                <p class="text-muted mb-4">
+                    У вас есть вопросы? Мы готовы помочь вам выбрать идеальный отдых 
+                    или создать индивидуальную программу.
+                </p>
+                
+                <div class="contact-info">
+                    <div class="contact-item mb-3">
+                        <i class="bi bi-telephone-fill"></i>
+                        <div>
+                            <strong>Телефон</strong>
+                            <p class="mb-0">+7 900 123-45-67</p>
+                        </div>
+                    </div>
+                    <div class="contact-item mb-3">
+                        <i class="bi bi-envelope-fill"></i>
+                        <div>
+                            <strong>Email</strong>
+                            <p class="mb-0">info@imperial-collection.ru</p>
+                        </div>
+                    </div>
+                    <div class="contact-item">
+                        <i class="bi bi-clock-fill"></i>
+                        <div>
+                            <strong>Время работы</strong>
+                            <p class="mb-0">Ежедневно 9:00 - 21:00</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-6">
+                <form action="{{ url_for('contact') }}" method="POST" class="contact-form">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <input type="text" name="name" class="form-control" 
+                                   placeholder="Ваше имя" required>
+                        </div>
+                        <div class="col-md-6">
+                            <input type="email" name="email" class="form-control" 
+                                   placeholder="Email" required>
+                        </div>
+                        <div class="col-12">
+                            <input type="tel" name="phone" class="form-control" 
+                                   placeholder="Телефон">
+                        </div>
+                        <div class="col-12">
+                            <textarea name="message" class="form-control" rows="4" 
+                                      placeholder="Ваше сообщение" required></textarea>
+                        </div>
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-send me-2"></i> Отправить
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

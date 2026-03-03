@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}{% if property %}Редактирование{% else %}Добавление{% endif %} объекта - Imperial Collection{% endblock %}
+
+{% block content %}
+<div class="admin-page py-4">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-white">
+                        <h3 class="mb-0">
+                            <i class="bi bi-{% if property %}pencil-square{% else %}plus-circle{% endif %} me-2"></i>
+                            {% if property %}Редактирование объекта{% else %}Добавление объекта{% endif %}
+                        </h3>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST">
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Название *</label>
+                                    <input type="text" name="name" class="form-control" 
+                                           value="{{ property.name if property else '' }}" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Тип объекта *</label>
+                                    <select name="property_type" class="form-select" required>
+                                        <option value="hunting" {% if property and property.property_type == 'hunting' %}selected{% endif %}>
+                                            Охотничий стан
+                                        </option>
+                                        <option value="mansion" {% if property and property.property_type == 'mansion' %}selected{% endif %}>
+                                            Премиальная резиденция
+                                        </option>
+                                        <option value="village" {% if property and property.property_type == 'village' %}selected{% endif %}>
+                                            Деревня
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Краткое описание *</label>
+                                    <input type="text" name="short_description" class="form-control" 
+                                           value="{{ property.short_description if property else '' }}" 
+                                           maxlength="200" required>
+                                    <small class="text-muted">Максимум 200 символов</small>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Полное описание *</label>
+                                    <textarea name="full_description" class="form-control" rows="4" required>{{ property.full_description if property else '' }}</textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Расположение *</label>
+                                    <input type="text" name="location" class="form-control" 
+                                           value="{{ property.location if property else '' }}" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">URL изображения *</label>
+                                    <input type="url" name="image_url" class="form-control" 
+                                           value="{{ property.image_url if property else '' }}" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Цена за ночь (₽) *</label>
+                                    <input type="number" name="price_per_night" class="form-control" 
+                                           value="{{ property.price_per_night if property else '' }}" 
+                                           min="0" step="100" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Вместимость (чел.) *</label>
+                                    <input type="number" name="capacity" class="form-control" 
+                                           value="{{ property.capacity if property else '' }}" 
+                                           min="1" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Статус</label>
+                                    <div class="form-check mt-2">
+                                        <input type="checkbox" name="is_available" class="form-check-input" 
+                                               id="is_available" {% if not property or property.is_available %}checked{% endif %}>
+                                        <label class="form-check-label" for="is_available">Доступен для бронирования</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <label class="form-label">Удобства (по одному на строку)</label>
+                                    <textarea name="amenities" class="form-control" rows="5" placeholder="Баня&#10;Мангал&#10;Бассейн">{% if property %}{% for amenity in property.amenities|from_json %}{{ amenity }}
+{% endfor %}{% endif %}</textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Особенности (по одному на строку)</label>
+                                    <textarea name="features" class="form-control" rows="5" placeholder="Охота с егерем&#10;Рыбалка&#10;Закрытая территория">{% if property %}{% for feature in property.features|from_json %}{{ feature }}
+{% endfor %}{% endif %}</textarea>
+                                </div>
+                                
+                                <div class="col-12">
+                                    <hr>
+                                    <div class="d-flex justify-content-between">
+                                        <a href="{{ url_for('admin_properties') }}" class="btn btn-secondary">
+                                            <i class="bi bi-arrow-left me-2"></i> Отмена
+                                        </a>
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="bi bi-check-circle me-2"></i> 
+                                            {% if property %}Сохранить изменения{% else %}Создать объект{% endif %}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
