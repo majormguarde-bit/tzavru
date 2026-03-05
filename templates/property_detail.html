@@ -173,6 +173,30 @@
                         {% endif %}
                     {% endfor %}
                 </div>
+                
+                <!-- Video -->
+                {% if property.local_video_urls %}
+                <div class="mt-5">
+                    <h3 class="mb-4">Видеообзор</h3>
+                    {% for video in property.local_video_urls|from_json %}
+                    <div class="ratio ratio-16x9 shadow rounded overflow-hidden bg-black mb-4">
+                        <video controls playsinline>
+                            <source src="{{ video }}">
+                            Ваш браузер не поддерживает воспроизведение видео.
+                        </video>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if property.video_url %}
+                <div class="mt-5">
+                    <h3 class="mb-4">Видеообзор (YouTube)</h3>
+                    <div class="ratio ratio-16x9 shadow rounded overflow-hidden">
+                        <iframe src="{{ property.video_url|embed_url }}" title="Видеообзор объекта" allowfullscreen></iframe>
+                    </div>
+                </div>
+                {% endif %}
             </div>
             <div class="col-lg-4">
                 <div class="booking-sidebar">

@@ -50,10 +50,15 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'webm', 'ogg', 'mov'}
 
 def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def allowed_video_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
 
 # Добавляем фильтры для Jinja2
 @app.template_filter('from_json')
@@ -71,6 +76,28 @@ def format_price(value):
         return f"{int(value):,}".replace(',', ' ')
     except:
         return value
+
+@app.template_filter('embed_url')
+def embed_url(value):
+    if not value:
+        return None
+    
+    # YouTube full link
+    match = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', value)
+    if match:
+        return f"https://www.youtube.com/embed/{match.group(1)}"
+    
+    # YouTube short link
+    match = re.search(r'youtu\.be\/([0-9A-Za-z_-]{11})', value)
+    if match:
+        return f"https://www.youtube.com/embed/{match.group(1)}"
+        
+    # Vimeo
+    match = re.search(r'vimeo\.com\/(\d+)', value)
+    if match:
+        return f"https://player.vimeo.com/video/{match.group(1)}"
+        
+    return value
 
 # Models
 class User(db.Model):
@@ -91,6 +118,8 @@ class Property(db.Model):
     location = db.Column(db.String(200), nullable=False)
     image_url = db.Column(db.String(300))
     gallery_urls = db.Column(db.Text)
+    video_url = db.Column(db.String(500))
+    local_video_urls = db.Column(db.Text)
     price_per_night = db.Column(db.Float, nullable=False)
     capacity = db.Column(db.Integer, nullable=False)
     amenities = db.Column(db.Text)
@@ -451,6 +480,17 @@ def add_property():
             latitude = None
             longitude = None
 
+        # Handle video upload
+        local_video_urls = []
+        if 'video_files' in request.files:
+            for file in request.files.getlist('video_files'):
+                if file and allowed_video_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    filename = f"video_{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
+                    if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    local_video_urls.append(url_for('static', filename=f'uploads/{filename}'))
+
         property = Property(
             name=request.form['name'],
             property_type=prop_slug,
@@ -459,6 +499,8 @@ def add_property():
             location=request.form['location'],
             image_url=image_url,
             gallery_urls=json.dumps(gallery_urls),
+            video_url=request.form.get('video_url'),
+            local_video_urls=json.dumps(local_video_urls),
             price_per_night=float(request.form['price_per_night']),
             capacity=int(request.form['capacity']),
             amenities=json.dumps(amenities),
@@ -556,7 +598,27 @@ def admin_property_edit(property_id):
         
         property.image_url = new_main
         property.gallery_urls = json.dumps(new_gallery)
+        property.video_url = request.form.get('video_url')
         
+        # Handle local video upload
+        current_local_videos = json.loads(property.local_video_urls) if property.local_video_urls else []
+        
+        # Add new videos
+        if 'video_files' in request.files:
+            for file in request.files.getlist('video_files'):
+                if file and allowed_video_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    filename = f"video_{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
+                    if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    current_local_videos.append(url_for('static', filename=f'uploads/{filename}'))
+        
+        # Handle deletion of local videos
+        videos_to_delete = request.form.getlist('delete_local_videos')
+        current_local_videos = [v for v in current_local_videos if v not in videos_to_delete]
+        
+        property.local_video_urls = json.dumps(current_local_videos)
+
         property.price_per_night = float(request.form['price_per_night'])
         property.capacity = int(request.form['capacity'])
         property.is_available = 'is_available' in request.form

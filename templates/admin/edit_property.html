@@ -175,6 +175,40 @@
                         </div>
                     </div>
                         
+                    <div class="col-12 mb-4">
+                        <label class="form-label">Ссылка на видео (YouTube/Vimeo)</label>
+                        <input type="text" name="video_url" class="form-control" 
+                               value="{{ property.video_url if property and property.video_url else '' }}" 
+                               placeholder="https://www.youtube.com/watch?v=...">
+                        <div class="form-text">Вставьте ссылку на видео с YouTube или Vimeo.</div>
+                    </div>
+
+                    <div class="col-12 mb-4">
+                        <label class="form-label">ИЛИ Загрузите видео файлы</label>
+                        <input type="file" name="video_files" class="form-control" accept="video/mp4,video/webm,video/ogg,video/quicktime" multiple>
+                        <div class="form-text">Поддерживаемые форматы: MP4, WebM, OGG, MOV. Можно выбрать несколько файлов.</div>
+                        
+                        {% if property and property.local_video_urls %}
+                        <div class="mt-2 row g-3">
+                            {% for video in property.local_video_urls|from_json %}
+                            <div class="col-md-6 col-lg-4">
+                                <div class="border rounded bg-light p-2 h-100">
+                                    <div class="ratio ratio-16x9 mb-2 bg-black rounded overflow-hidden">
+                                        <video controls class="w-100 h-100">
+                                            <source src="{{ video }}">
+                                        </video>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="delete_local_videos" value="{{ video }}" id="del_vid_{{ loop.index }}">
+                                        <label class="form-check-label text-danger" for="del_vid_{{ loop.index }}">Удалить</label>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+
                         <div class="col-md-4">
                             <label class="form-label">Цена за ночь (₽) *</label>
                             <input type="number" name="price_per_night" class="form-control" 
