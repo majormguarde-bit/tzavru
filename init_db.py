@@ -1,14 +1,29 @@
 from flask import Flask
 from config import Config
-from database import db
+from app import app, db
+import os
 
-app = Flask(__name__)
-app.config.from_object(Config)
-db.init_app(app)
+def init_db():
+    print("Инициализация базы данных...")
+    
+    # Убедимся, что папка instance существует
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    instance_dir = os.path.join(base_dir, 'instance')
+    if not os.path.exists(instance_dir):
+        os.makedirs(instance_dir)
+        print(f"Создана папка: {instance_dir}")
 
-# Импортируем модели после инициализации
-from models import User, Property, Booking, ContactRequest
+    with app.app_context():
+        # Показываем, куда будем писать
+        print(f"Используемая база данных: {app.config['SQLALCHEMY_DATABASE_URI']}")
+        
+        # Создаем все таблицы
+        db.create_all()
+        print('Все таблицы успешно созданы!')
+        
+        # Инструкция для миграций
+        print("\nВАЖНО: Если вы используете миграции, выполните:")
+        print("flask db stamp head")
 
-with app.app_context():
-    db.create_all()
-    print('База создана')
+if __name__ == "__main__":
+    init_db()
