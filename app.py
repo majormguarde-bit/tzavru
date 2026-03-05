@@ -401,8 +401,7 @@ def add_property():
                     filename = secure_filename(file.filename)
                     filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
                     if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
-                    if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     image_urls.append(url_for('static', filename=f'uploads/{filename}'))
         
         image_url = image_urls[0] if image_urls else None
@@ -534,8 +533,7 @@ def admin_property_edit(property_id):
                     filename = secure_filename(file.filename)
                     filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
                     if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
-                    if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     new_urls.append(url_for('static', filename=f'uploads/{filename}'))
         
         final_pool = kept_images + new_urls
