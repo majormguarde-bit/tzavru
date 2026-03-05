@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from datetime import datetime
 from config import Config
 import json
@@ -46,6 +47,7 @@ app.config.from_object(Config)
 app.config['SECRET_KEY'] = 'dev-secret-key-change-this-in-production'
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
