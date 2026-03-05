@@ -400,7 +400,9 @@ def add_property():
                 if file and allowed_file(file.filename):
                     filename = secure_filename(file.filename)
                     filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
-                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
+                    if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     image_urls.append(url_for('static', filename=f'uploads/{filename}'))
         
         image_url = image_urls[0] if image_urls else None
@@ -531,7 +533,9 @@ def admin_property_edit(property_id):
                 if file and allowed_file(file.filename):
                     filename = secure_filename(file.filename)
                     filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
-                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
+                    if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                     new_urls.append(url_for('static', filename=f'uploads/{filename}'))
         
         final_pool = kept_images + new_urls
@@ -650,6 +654,7 @@ def admin_review_add():
             file = request.files['avatar']
             if file and file.filename:
                 filename = secure_filename(file.filename)
+                if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                 review.avatar_url = url_for('static', filename=f'uploads/{filename}')
                 
@@ -674,6 +679,7 @@ def admin_review_edit(id):
             file = request.files['avatar']
             if file and file.filename:
                 filename = secure_filename(file.filename)
+                if not os.path.exists(app.config['UPLOAD_FOLDER']): os.makedirs(app.config['UPLOAD_FOLDER'])
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                 review.avatar_url = url_for('static', filename=f'uploads/{filename}')
                 
@@ -759,6 +765,8 @@ def admin_settings():
                     logo_filename = f"logo_{ts}_{filename}"
                     logo_path = os.path.join(app.config['UPLOAD_FOLDER'], logo_filename)
                     
+                    if not os.path.exists(app.config['UPLOAD_FOLDER']):
+                        os.makedirs(app.config['UPLOAD_FOLDER'])
                     file.save(logo_path)
                     settings.logo_url = url_for('static', filename=f'uploads/{logo_filename}')
                     
