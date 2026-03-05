@@ -104,17 +104,55 @@ touch tmp/restart.txt
 
 **Для Systemd (VPS, Gunicorn):**
 ```bash
-sudo systemctl restart myapp
+sudo systemctl restart site_1
 ```
 
 ---
 
-## Краткая сводка команд (Cheat Sheet)
+## ⚠️ ПОЛНАЯ ПЕРЕУСТАНОВКА (Сброс и очистка базы)
 
-```bash
-cd ~/www/site_1
-git pull origin master
-source venv/bin/activate
-pip install -r requirements.txt
-touch tmp/restart.txt
-```
+Если возникли критические ошибки с базой данных (например, рассинхронизация миграций) и вы хотите начать **с чистого листа** (ВНИМАНИЕ: Все данные будут удалены!):
+
+1. **Перейдите в папку проекта:**
+   ```bash
+   cd ~/tzav/default
+   ```
+
+2. **Сбросьте код до состояния репозитория (удалит локальные изменения):**
+   ```bash
+   git fetch origin
+   git reset --hard origin/master
+   ```
+
+3. **Удалите старую базу данных и временные файлы:**
+   ```bash
+   rm -rf instance/*.db
+   rm -rf *.db
+   find . -name "*.pyc" -delete
+   find . -name "__pycache__" -delete
+   ```
+
+4. **Обновите зависимости:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. **Создайте новую базу данных:**
+   ```bash
+   python init_db.py
+   ```
+
+6. **Создайте администратора (Login: admin / Pass: admin123):**
+   ```bash
+   python create_admin.py
+   ```
+
+7. **Синхронизируйте миграции (чтобы в будущем работали):**
+   ```bash
+   flask db stamp head
+   ```
+
+8. **Перезапустите сайт:**
+   ```bash
+   touch tmp/restart.txt
+   ```
