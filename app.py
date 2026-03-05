@@ -107,6 +107,7 @@ class Review(db.Model):
     text = db.Column(db.Text, nullable=False)
     rating = db.Column(db.Integer, default=5)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_published = db.Column(db.Boolean, default=False)
     avatar_url = db.Column(db.String(300))
 

@@ -26,6 +26,65 @@
                 map.fitBounds(bounds, {padding: [50, 50]});
             }
         {% endif %}
+
+        // Review Modal Logic
+        var reviewModal = document.getElementById('reviewModal');
+        if (reviewModal) {
+            reviewModal.addEventListener('show.bs.modal', function (event) {
+                var button = event.relatedTarget;
+                if (!button.classList.contains('review-card')) {
+                    // If clicked on a child element, find the closest .review-card
+                    button = button.closest('.review-card');
+                }
+                
+                var title = button.getAttribute('data-title');
+                var author = button.getAttribute('data-author');
+                var text = button.getAttribute('data-text');
+                var date = button.getAttribute('data-date');
+                var updated = button.getAttribute('data-updated');
+                var rating = parseInt(button.getAttribute('data-rating'));
+                var avatar = button.getAttribute('data-avatar');
+
+                var modalTitle = reviewModal.querySelector('#modalTitle');
+                var modalAuthor = reviewModal.querySelector('#modalAuthor');
+                var modalText = reviewModal.querySelector('#modalText');
+                var modalDate = reviewModal.querySelector('#modalDate');
+                var modalRating = reviewModal.querySelector('#modalRating');
+                var modalAvatarContainer = reviewModal.querySelector('#modalAvatarContainer');
+
+                modalTitle.textContent = title ? title : author;
+                if (title) {
+                    modalAuthor.textContent = author;
+                    modalAuthor.style.display = 'block';
+                } else {
+                    modalAuthor.style.display = 'none';
+                }
+                
+                modalText.textContent = text;
+                
+                var dateText = date;
+                if (updated) {
+                    dateText += ' (Обновлено: ' + updated + ')';
+                }
+                modalDate.textContent = dateText;
+
+                var starsHtml = '';
+                for (var i = 0; i < rating; i++) {
+                    starsHtml += '<i class="bi bi-star-fill"></i> ';
+                }
+                for (var i = 0; i < 5 - rating; i++) {
+                    starsHtml += '<i class="bi bi-star"></i> ';
+                }
+                modalRating.innerHTML = starsHtml;
+
+                if (avatar) {
+                    // Assuming avatar is high quality enough, or we could have a separate data-full-image attribute
+                    modalAvatarContainer.innerHTML = '<img src="' + avatar + '" class="rounded-circle shadow-sm" style="width: 100px; height: 100px; object-fit: cover;">';
+                } else {
+                    modalAvatarContainer.innerHTML = '<div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center shadow-sm" style="width: 100px; height: 100px;"><i class="bi bi-person-fill h1 mb-0"></i></div>';
+                }
+            });
+        }
     });
 </script>
 {% endblock %}
@@ -210,45 +269,118 @@
 <section id="reviews" class="reviews-section py-5">
     <div class="container">
         <h2 class="section-title text-center mb-5">Отзывы наших гостей</h2>
-        <div class="row">
-            {% for review in reviews %}
-            <div class="col-md-4 mb-4">
-                <div class="card h-100 shadow-sm">
-                    <div class="card-body">
-                        <div class="d-flex align-items-center mb-3">
-                            {% if review.avatar_url %}
-                            <img src="{{ review.avatar_url }}" alt="{{ review.author or review.client_name }}" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;">
-                            {% else %}
-                            <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
-                                <i class="bi bi-person-fill h4 mb-0"></i>
-                            </div>
-                            {% endif %}
-                            <div>
-                                {% if review.title %}
-                                <h5 class="card-title mb-1">{{ review.title }}</h5>
-                                <div class="text-muted small mb-1">{{ review.author or review.client_name }}</div>
-                                {% else %}
-                                <h5 class="card-title mb-0">{{ review.author or review.client_name }}</h5>
-                                {% endif %}
-                                <div class="text-warning">
-                                    {% for i in range(review.rating) %}
-                                    <i class="bi bi-star-fill"></i>
-                                    {% endfor %}
-                                    {% for i in range(5 - review.rating) %}
-                                    <i class="bi bi-star"></i>
-                                    {% endfor %}
+        
+        {% if reviews %}
+        <div id="reviewsCarousel" class="carousel slide" data-bs-ride="carousel">
+            <div class="carousel-inner">
+                {% for batch in reviews|batch(3) %}
+                <div class="carousel-item {% if loop.first %}active{% endif %}">
+                    <div class="row">
+                        {% for review in batch %}
+                        <div class="col-md-4 mb-4">
+                            <div class="card h-100 shadow-sm review-card" 
+                                 style="cursor: pointer;"
+                                 data-bs-toggle="modal" 
+                                 data-bs-target="#reviewModal"
+                                 data-title="{{ review.title or '' }}"
+                                 data-author="{{ review.author or review.client_name }}"
+                                 data-text="{{ review.text }}"
+                                 data-date="{{ review.created_at.strftime('%d.%m.%Y') }}"
+                                 data-updated="{% if review.updated_at and review.updated_at != review.created_at %}{{ review.updated_at.strftime('%d.%m.%Y') }}{% endif %}"
+                                 data-rating="{{ review.rating }}"
+                                 data-avatar="{{ review.avatar_url or '' }}">
+                                <div class="card-body">
+                                    <div class="d-flex align-items-center mb-3">
+                                        {% if review.avatar_url %}
+                                        <img src="{{ review.avatar_url }}" alt="{{ review.author or review.client_name }}" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;">
+                                        {% else %}
+                                        <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                                            <i class="bi bi-person-fill h4 mb-0"></i>
+                                        </div>
+                                        {% endif %}
+                                        <div>
+                                            {% if review.title %}
+                                            <h5 class="card-title mb-1">{{ review.title }}</h5>
+                                            <div class="text-muted small mb-1">{{ review.author or review.client_name }}</div>
+                                            {% else %}
+                                            <h5 class="card-title mb-0">{{ review.author or review.client_name }}</h5>
+                                            {% endif %}
+                                            <div class="text-warning">
+                                                {% for i in range(review.rating) %}
+                                                <i class="bi bi-star-fill"></i>
+                                                {% endfor %}
+                                                {% for i in range(5 - review.rating) %}
+                                                <i class="bi bi-star"></i>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <p class="card-text text-truncate-3">{{ review.text | truncate(100) }}</p>
+                                    <div class="d-flex justify-content-between align-items-end mt-auto">
+                                        <small class="text-primary">Читать полностью...</small>
+                                        <div class="text-muted small">
+                                            {% if review.updated_at and review.updated_at != review.created_at %}
+                                            Обновлено: {{ review.updated_at.strftime('%d.%m.%Y') }}
+                                            {% else %}
+                                            {{ review.created_at.strftime('%d.%m.%Y') }}
+                                            {% endif %}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <p class="card-text">"{{ review.text }}"</p>
-                        <p class="text-muted small mb-0 text-end">{{ review.created_at.strftime('%d.%m.%Y') }}</p>
+                        {% endfor %}
                     </div>
                 </div>
+                {% endfor %}
             </div>
-            {% endfor %}
+            
+            {% if reviews|length > 3 %}
+            <button class="carousel-control-prev" type="button" data-bs-target="#reviewsCarousel" data-bs-slide="prev" style="width: 5%; left: -5%;">
+                <span class="carousel-control-prev-icon bg-dark rounded-circle" aria-hidden="true"></span>
+                <span class="visually-hidden">Предыдущая</span>
+            </button>
+            <button class="carousel-control-next" type="button" data-bs-target="#reviewsCarousel" data-bs-slide="next" style="width: 5%; right: -5%;">
+                <span class="carousel-control-next-icon bg-dark rounded-circle" aria-hidden="true"></span>
+                <span class="visually-hidden">Следующая</span>
+            </button>
+            {% endif %}
         </div>
+        {% else %}
+        <p class="text-center text-muted">Пока нет отзывов. Будьте первым!</p>
+        {% endif %}
     </div>
 </section>
+
+<!-- Review Modal -->
+<div class="modal fade" id="reviewModal" tabindex="-1" aria-labelledby="reviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reviewModalLabel">Отзыв</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex align-items-center mb-4">
+                    <div id="modalAvatarContainer" class="me-3">
+                        <!-- Avatar will be injected here -->
+                    </div>
+                    <div>
+                        <h4 id="modalTitle" class="mb-1"></h4>
+                        <div id="modalAuthor" class="text-muted mb-1"></div>
+                        <div id="modalRating" class="text-warning"></div>
+                    </div>
+                </div>
+                <div class="review-content">
+                    <p id="modalText" class="lead"></p>
+                </div>
+                <div class="text-end text-muted mt-3">
+                    <small id="modalDate"></small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Map Section -->
 <section id="map" class="map-section py-3">

@@ -15,6 +15,7 @@ def migrate_db(db_path):
         # Table, Column, Type, Default
         ('review', 'title', 'VARCHAR(200)', None),
         ('review', 'author', 'VARCHAR(100)', None),
+        ('review', 'updated_at', 'TIMESTAMP', "2024-01-01 00:00:00"),
         ('review', 'avatar_url', 'VARCHAR(300)', None),
         ('user', 'phone', 'VARCHAR(20)', None),
         ('site_settings', 'favicon_url', 'VARCHAR(300)', None),
