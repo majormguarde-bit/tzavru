@@ -138,4 +138,30 @@
         </form>
     </div>
 </div>
+
+<div class="card mt-4 border-danger">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>Опасная зона</h5>
+    </div>
+    <div class="card-body">
+        <p class="card-text text-danger">
+            <strong>Внимание!</strong> Это действие необратимо. Будут удалены:
+            <ul>
+                <li>Все объекты недвижимости и их типы</li>
+                <li>Все бронирования и заявки</li>
+                <li>Все отзывы</li>
+                <li>Все пользователи (включая текущего)</li>
+                <li>Все текущие настройки сайта</li>
+            </ul>
+            После очистки будет создан единственный администратор: <strong>admin / admin123</strong>
+        </p>
+        
+        <form action="{{ url_for('admin_reset_db') }}" method="POST" onsubmit="return confirm('ВЫ УВЕРЕНЫ? Это действие удалит ВСЕ данные без возможности восстановления!');">
+            <input type="hidden" name="confirm" value="yes">
+            <button type="submit" class="btn btn-danger">
+                <i class="bi bi-trash-fill me-2"></i>Полная очистка базы данных
+            </button>
+        </form>
+    </div>
+</div>
 {% endblock %}

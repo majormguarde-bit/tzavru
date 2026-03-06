@@ -144,9 +144,49 @@ def send_sms_notification(phone, message):
         print(f"Failed to send SMS: {e}")
         return False
 
+def send_telegram_notification(chat_id, message):
+    """
+    Отправка сообщения в Telegram.
+    Использует Config.TELEGRAM_BOT_TOKEN
+    """
+    if not chat_id:
+        return False
+        
+    try:
+        token = Config.TELEGRAM_BOT_TOKEN
+        if not token or token == 'YOUR_BOT_TOKEN':
+            print("Telegram Bot Token not configured.")
+            return False
+
+        # Удаляем пробелы, если есть
+        chat_id = str(chat_id).strip()
+        
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        data = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        
+        response = requests.post(url, data=data, timeout=10)
+        result = response.json()
+        
+        if result.get("ok"):
+            print(f"Telegram message sent to {chat_id}")
+            return True
+        else:
+            print(f"Telegram API Error: {result}")
+            return False
+            
+    except Exception as e:
+        print(f"Error sending Telegram notification: {e}")
+        return False
+
 # Добавляем фильтры для Jinja2
 @app.template_filter('from_json')
 def from_json(value):
+    if value is None:
+        return []
     if isinstance(value, str):
         try:
             return json.loads(value)
@@ -200,6 +240,7 @@ class Property(db.Model):
     short_description = db.Column(db.String(200), nullable=False)
     full_description = db.Column(db.Text, nullable=False)
     location = db.Column(db.String(200), nullable=False)
+    telegram_chat_id = db.Column(db.String(50))
     image_url = db.Column(db.String(300))
     gallery_urls = db.Column(db.Text)
     video_url = db.Column(db.String(500))
@@ -240,7 +281,7 @@ class Booking(db.Model):
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    property = db.relationship('Property', backref=db.backref('bookings', lazy=True))
+    property = db.relationship('Property', backref=db.backref('bookings', lazy=True, cascade="all, delete-orphan"))
 
 class ContactRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -525,6 +566,25 @@ def booking(property_id):
                                    args=(settings.phone_secondary, admin_sms)).start()
             except Exception as e:
                 print(f"Error sending booking SMS: {e}")
+
+            # Send Telegram notification (if property has chat_id)
+            if property.telegram_chat_id:
+                try:
+                    tg_message = f"""
+<b>Новое бронирование! #{booking.id}</b>
+🏠 <b>Объект:</b> {property.name}
+👤 <b>Гость:</b> {booking.guest_name}
+📞 <b>Телефон:</b> {booking.guest_phone}
+📅 <b>Заезд:</b> {booking.check_in.strftime('%d.%m.%Y')}
+📅 <b>Выезд:</b> {booking.check_out.strftime('%d.%m.%Y')}
+👥 <b>Гостей:</b> {booking.guests_count}
+💰 <b>Сумма:</b> {int(booking.total_price):,} руб.
+📝 <b>Пожелания:</b> {booking.special_requests}
+"""
+                    threading.Thread(target=send_telegram_notification, 
+                                   args=(property.telegram_chat_id, tg_message)).start()
+                except Exception as e:
+                    print(f"Error starting Telegram thread: {e}")
                 
             msg = 'Бронирование успешно создано! Ожидайте подтверждения.'
             if is_ajax:
@@ -885,6 +945,7 @@ def add_property():
             short_description=request.form['short_description'],
             full_description=request.form['full_description'],
             location=request.form['location'],
+            telegram_chat_id=request.form.get('telegram_chat_id'),
             image_url=image_url,
             gallery_urls=json.dumps(gallery_urls),
             video_url=request.form.get('video_url'),
@@ -946,6 +1007,7 @@ def admin_property_edit(property_id):
         property.short_description = request.form['short_description']
         property.full_description = request.form['full_description']
         property.location = request.form['location']
+        property.telegram_chat_id = request.form.get('telegram_chat_id')
         
         # Unified Image Management
         current_main = property.image_url
@@ -1353,6 +1415,57 @@ def admin_settings():
         return redirect(url_for('admin_settings'))
         
     return render_template('admin/settings.html', settings=settings)
+
+@app.route('/admin/settings/reset-db', methods=['POST'])
+@login_required
+@admin_required
+def admin_reset_db():
+    if request.form.get('confirm') != 'yes':
+        flash('Для сброса базы данных необходимо подтверждение.', 'error')
+        return redirect(url_for('admin_settings'))
+        
+    try:
+        # Clear all tables in correct order (dependent first)
+        Booking.query.delete()
+        
+        # Delete main content
+        Review.query.delete()
+        Property.query.delete()
+        ContactRequest.query.delete()
+        PropertyType.query.delete()
+        
+        # Delete settings and users
+        SiteSettings.query.delete()
+        User.query.delete()
+        
+        db.session.commit()
+        
+        # Create default admin
+        admin = User(
+            username='admin',
+            email='admin@example.com',
+            password_hash=generate_password_hash('admin123'),
+            is_admin=True
+        )
+        db.session.add(admin)
+        
+        # Create default settings
+        settings = SiteSettings()
+        db.session.add(settings)
+        
+        db.session.commit()
+        
+        # Log out current session as user ID might have changed
+        session.clear()
+        
+        flash('База данных полностью очищена. Создан пользователь admin/admin123. Пожалуйста, войдите снова.', 'success')
+        return redirect(url_for('login'))
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error resetting database: {e}")
+        flash(f'Ошибка при сбросе базы данных: {str(e)}', 'error')
+        return redirect(url_for('admin_settings'))
 
 @app.route('/admin/dictionaries/property-types')
 @login_required

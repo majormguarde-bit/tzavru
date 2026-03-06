@@ -19,6 +19,7 @@ class Property(db.Model):
     short_description = db.Column(db.String(200), nullable=False)
     full_description = db.Column(db.Text, nullable=False)
     location = db.Column(db.String(200), nullable=False)
+    telegram_chat_id = db.Column(db.String(50))
     image_url = db.Column(db.String(300))
     gallery_urls = db.Column(db.Text)  # JSON array of image URLs
     price_per_night = db.Column(db.Float, nullable=False)
@@ -43,7 +44,7 @@ class Booking(db.Model):
     status = db.Column(db.String(20), default='pending')  # pending, confirmed, cancelled
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    property = db.relationship('Property', backref=db.backref('bookings', lazy=True))
+    property = db.relationship('Property', backref=db.backref('bookings', lazy=True, cascade="all, delete-orphan"))
 
 class ContactRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)

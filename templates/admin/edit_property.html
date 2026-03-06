@@ -88,10 +88,18 @@
                             <div class="form-text">Используйте клавишу Enter для создания новых абзацев.</div>
                         </div>
                         
-                        <div class="col-12">
-                            <label class="form-label">Локация (отображается текстом)</label>
+                        <div class="col-md-6">
+                            <label class="form-label">Расположение *</label>
                             <input type="text" name="location" class="form-control" 
                                    value="{{ property.location if property else '' }}" required>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">Telegram Chat ID (для уведомлений)</label>
+                            <input type="text" name="telegram_chat_id" class="form-control" 
+                                   value="{{ property.telegram_chat_id if property and property.telegram_chat_id else '' }}" 
+                                   placeholder="@username или ID (например, 123456789)">
+                            <div class="form-text">Оставьте пустым, если не нужно. Для получения ID напишите боту @userinfobot</div>
                         </div>
 
                         <div class="col-md-6">
