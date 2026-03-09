@@ -1,0 +1,65 @@
+
+{% extends "admin/layout.html" %}
+
+{% block title %}Характеристики объектов{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h2><i class="bi bi-list-check"></i> Характеристики объектов</h2>
+    </div>
+    <div class="col-md-6 text-end">
+        <a href="{{ url_for('admin_characteristic_add') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Добавить характеристику
+        </a>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th width="5%">#</th>
+                        <th>Название</th>
+                        <th>Единица измерения</th>
+                        <th width="15%">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td>{{ item.id }}</td>
+                        <td><strong>{{ item.name }}</strong></td>
+                        <td>{{ item.unit_type.short_name if item.unit_type else (item.unit or '-') }}</td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('admin_characteristic_edit', item_id=item.id) }}" 
+                                   class="btn btn-sm btn-outline-primary" title="Редактировать">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <form action="{{ url_for('admin_characteristic_delete', item_id=item.id) }}" 
+                                      method="POST" style="display: inline;"
+                                      onsubmit="return confirm('Вы уверены? Это удалит характеристику из всех объектов.');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Удалить">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-5">
+                            <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                            Характеристики не найдены
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

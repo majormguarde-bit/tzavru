@@ -233,6 +233,46 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class UnitType(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    short_name = db.Column(db.String(20), nullable=False)
+
+class OptionType(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    price = db.Column(db.Float, nullable=False, default=0.0)
+    unit_type_id = db.Column(db.Integer, db.ForeignKey('unit_type.id'))
+
+    unit_type = db.relationship('UnitType', backref='options')
+
+class CharacteristicType(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    unit = db.Column(db.String(20))
+    unit_type_id = db.Column(db.Integer, db.ForeignKey('unit_type.id'))
+
+    unit_type = db.relationship('UnitType', backref='characteristics')
+
+class PropertyOption(db.Model):
+    __tablename__ = 'property_options'
+    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), primary_key=True)
+    option_type_id = db.Column(db.Integer, db.ForeignKey('option_type.id'), primary_key=True)
+    price = db.Column(db.Float, nullable=False, default=0.0)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+
+    property = db.relationship('Property', backref=db.backref('property_options', lazy='joined', cascade="all, delete-orphan"))
+    option_type = db.relationship('OptionType', backref='property_links')
+
+class PropertyCharacteristic(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
+    characteristic_type_id = db.Column(db.Integer, db.ForeignKey('characteristic_type.id'), nullable=False)
+    value = db.Column(db.String(200), nullable=False)
+
+    characteristic_type = db.relationship('CharacteristicType', backref='property_values')
+    property = db.relationship('Property', backref=db.backref('characteristics', lazy=True, cascade="all, delete-orphan"))
+
 class Property(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -282,6 +322,17 @@ class Booking(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     property = db.relationship('Property', backref=db.backref('bookings', lazy=True, cascade="all, delete-orphan"))
+
+class BookingOption(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    booking_id = db.Column(db.Integer, db.ForeignKey('booking.id'), nullable=False)
+    option_type_id = db.Column(db.Integer, db.ForeignKey('option_type.id'))
+    option_name = db.Column(db.String(100), nullable=False)
+    price = db.Column(db.Float, nullable=False, default=0.0)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+
+    booking = db.relationship('Booking', backref=db.backref('selected_options', lazy=True, cascade="all, delete-orphan"))
+    option_type = db.relationship('OptionType')
 
 class ContactRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -447,6 +498,7 @@ def captcha():
 @app.route('/booking/<int:property_id>', methods=['GET', 'POST'])
 def booking(property_id):
     property = Property.query.get_or_404(property_id)
+    property_options = sorted(property.property_options, key=lambda po: po.option_type.name.lower())
     
     if request.method == 'GET':
         # Generate initial captcha for GET request
@@ -507,16 +559,70 @@ def booking(property_id):
                 flash(msg, 'error')
                 return redirect(url_for('booking', property_id=property_id))
 
-            # 3. Calculate price server-side
             days = (check_out - check_in).days
-            total_price = days * property.price_per_night
-            
             guests_count = int(request.form.get('guests_count', 1))
+            if guests_count < 1:
+                msg = 'Количество гостей должно быть не меньше 1'
+                if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                flash(msg, 'error')
+                return redirect(url_for('booking', property_id=property_id))
             if guests_count > property.capacity:
                 msg = f'Максимальное количество гостей: {property.capacity}'
                 if is_ajax: return jsonify({'status': 'error', 'message': msg})
                 flash(msg, 'error')
                 return redirect(url_for('booking', property_id=property_id))
+
+            selected_option_ids = request.form.getlist('selected_options')
+            selected_property_options = []
+            selected_option_ids_seen = set()
+            options_total = 0.0
+
+            property_options_map = {po.option_type_id: po for po in property_options}
+            for option_id_raw in selected_option_ids:
+                try:
+                    option_id = int(option_id_raw)
+                except ValueError:
+                    msg = 'Некорректный выбор опции'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                if option_id in selected_option_ids_seen:
+                    continue
+                selected_option_ids_seen.add(option_id)
+
+                property_option = property_options_map.get(option_id)
+                if not property_option:
+                    msg = 'Выбрана недоступная для объекта опция'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                option_qty_raw = request.form.get(f'option_qty_{option_id}', '1').strip()
+                try:
+                    option_qty = int(option_qty_raw)
+                except ValueError:
+                    msg = 'Некорректное количество у выбранной опции'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                if option_qty < 1:
+                    msg = 'Количество опции должно быть не меньше 1'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                option_price = property_option.option_type.price if property_option.option_type and property_option.option_type.price is not None else 0.0
+                selected_property_options.append({
+                    'option_type_id': property_option.option_type_id,
+                    'option_name': property_option.option_type.name,
+                    'price': option_price,
+                    'quantity': option_qty
+                })
+                options_total += option_price * option_qty * days
+
+            total_price = days * property.price_per_night + options_total
 
             booking = Booking(
                 property_id=property_id,
@@ -531,10 +637,28 @@ def booking(property_id):
                 status='pending'
             )
             db.session.add(booking)
+            db.session.flush()
+
+            for selected_option in selected_property_options:
+                db.session.add(BookingOption(
+                    booking_id=booking.id,
+                    option_type_id=selected_option['option_type_id'],
+                    option_name=selected_option['option_name'],
+                    price=selected_option['price'],
+                    quantity=selected_option['quantity']
+                ))
+
             db.session.commit()
             
             # Send email notification
             try:
+                selected_options_html = ''
+                if booking.selected_options:
+                    option_days = (booking.check_out - booking.check_in).days
+                    selected_options_html = '<p><strong>Опции:</strong><br>' + '<br>'.join(
+                        [f"{item.option_name} ({item.quantity} шт. × {option_days} ночей, +{(item.price * item.quantity * option_days):,.0f} руб.)" for item in booking.selected_options]
+                    ) + '</p>'
+
                 html_body = f"""
                 <h3>Новое бронирование!</h3>
                 <p><strong>Объект:</strong> {property.name}</p>
@@ -544,6 +668,7 @@ def booking(property_id):
                 <p><strong>Даты:</strong> {booking.check_in} - {booking.check_out}</p>
                 <p><strong>Гостей:</strong> {booking.guests_count}</p>
                 <p><strong>Сумма:</strong> {booking.total_price} руб.</p>
+                {selected_options_html}
                 """
                 # Run in background thread to avoid blocking response
                 threading.Thread(target=send_email_notification, 
@@ -570,6 +695,13 @@ def booking(property_id):
             # Send Telegram notification (if property has chat_id)
             if property.telegram_chat_id:
                 try:
+                    selected_options_tg = ''
+                    if booking.selected_options:
+                        option_days = (booking.check_out - booking.check_in).days
+                        selected_options_tg = '\n🧩 <b>Опции:</b> ' + ', '.join(
+                            [f"{item.option_name} ({item.quantity} шт. × {option_days}, +{(item.price * item.quantity * option_days):,.0f} руб.)" for item in booking.selected_options]
+                        )
+
                     tg_message = f"""
 <b>Новое бронирование! #{booking.id}</b>
 🏠 <b>Объект:</b> {property.name}
@@ -580,6 +712,7 @@ def booking(property_id):
 👥 <b>Гостей:</b> {booking.guests_count}
 💰 <b>Сумма:</b> {int(booking.total_price):,} руб.
 📝 <b>Пожелания:</b> {booking.special_requests}
+{selected_options_tg}
 """
                     threading.Thread(target=send_telegram_notification, 
                                    args=(property.telegram_chat_id, tg_message)).start()
@@ -604,7 +737,7 @@ def booking(property_id):
             flash(msg, 'error')
             return redirect(url_for('booking', property_id=property_id))
             
-    return render_template('booking.html', property=property, captcha_question=captcha_question)
+    return render_template('booking.html', property=property, captcha_question=captcha_question, property_options=property_options)
 
 @app.route('/contact', methods=['GET', 'POST'])
 def contact():
@@ -959,12 +1092,36 @@ def add_property():
         )
         db.session.add(property)
         db.session.commit()
+        
+        # Options
+        selected_option_ids = set(request.form.getlist('options'))
+        for option in OptionType.query.order_by(OptionType.id).all():
+            if str(option.id) not in selected_option_ids:
+                continue
+
+            db.session.add(PropertyOption(
+                property_id=property.id,
+                option_type_id=option.id,
+                price=option.price,
+                quantity=1
+            ))
+        
+        # Characteristics
+        for char_type in CharacteristicType.query.all():
+            val = request.form.get(f'char_{char_type.id}')
+            if val:
+                pc = PropertyCharacteristic(property_id=property.id, characteristic_type_id=char_type.id, value=val)
+                db.session.add(pc)
+        db.session.commit()
+
         flash('Объект добавлен', 'success')
         return redirect(url_for('admin_properties'))
     
     unique_types = PropertyType.query.order_by(PropertyType.name).all()
+    all_options = OptionType.query.order_by(OptionType.name).all()
+    all_characteristics = CharacteristicType.query.order_by(CharacteristicType.name).all()
     current_type_name = ''
-    return render_template('admin/edit_property.html', unique_types=unique_types, current_type_name=current_type_name)
+    return render_template('admin/edit_property.html', unique_types=unique_types, current_type_name=current_type_name, all_options=all_options, all_characteristics=all_characteristics, property_characteristics={}, selected_option_ids=[])
 
 @app.route('/admin/properties/edit/<int:property_id>', methods=['GET', 'POST'])
 @login_required
@@ -1087,11 +1244,35 @@ def admin_property_edit(property_id):
             property.latitude = None
             property.longitude = None
 
+        # Options
+        selected_option_ids = set(request.form.getlist('options'))
+        PropertyOption.query.filter_by(property_id=property.id).delete()
+        for option in OptionType.query.order_by(OptionType.id).all():
+            if str(option.id) not in selected_option_ids:
+                continue
+
+            db.session.add(PropertyOption(
+                property_id=property.id,
+                option_type_id=option.id,
+                price=option.price,
+                quantity=1
+            ))
+        
+        # Characteristics
+        PropertyCharacteristic.query.filter_by(property_id=property.id).delete()
+        for char_type in CharacteristicType.query.all():
+            val = request.form.get(f'char_{char_type.id}')
+            if val:
+                pc = PropertyCharacteristic(property_id=property.id, characteristic_type_id=char_type.id, value=val)
+                db.session.add(pc)
+
         db.session.commit()
         flash('Объект обновлен', 'success')
         return redirect(url_for('admin_properties'))
         
     unique_types = PropertyType.query.order_by(PropertyType.name).all()
+    all_options = OptionType.query.order_by(OptionType.name).all()
+    all_characteristics = CharacteristicType.query.order_by(CharacteristicType.name).all()
     
     # Determine the name to show in the input
     current_type_name = ''
@@ -1104,7 +1285,10 @@ def admin_property_edit(property_id):
             # Fallback to slug if not found
             current_type_name = property.property_type
             
-    return render_template('admin/edit_property.html', property=property, unique_types=unique_types, current_type_name=current_type_name)
+    property_characteristics = {pc.characteristic_type_id: pc.value for pc in PropertyCharacteristic.query.filter_by(property_id=property.id).all()}
+    selected_option_ids = [po.option_type_id for po in property.property_options]
+            
+    return render_template('admin/edit_property.html', property=property, unique_types=unique_types, current_type_name=current_type_name, all_options=all_options, all_characteristics=all_characteristics, property_characteristics=property_characteristics, selected_option_ids=selected_option_ids)
 
 @app.route('/admin/properties/delete/<int:property_id>', methods=['POST'])
 @login_required
@@ -1520,6 +1704,196 @@ def admin_property_type_delete(type_id):
     db.session.commit()
     flash('Тип объекта удален', 'success')
     return redirect(url_for('admin_property_types'))
+
+# --- Characteristics ---
+@app.route('/admin/dictionaries/characteristics')
+@login_required
+def admin_characteristics():
+    items = CharacteristicType.query.order_by(CharacteristicType.name).all()
+    return render_template('admin/characteristics.html', items=items)
+
+@app.route('/admin/dictionaries/characteristics/add', methods=['GET', 'POST'])
+@login_required
+def admin_characteristic_add():
+    units = UnitType.query.order_by(UnitType.name).all()
+    if request.method == 'POST':
+        name = request.form.get('name')
+        unit_type_id_raw = request.form.get('unit_type_id')
+        unit_type = UnitType.query.get(int(unit_type_id_raw)) if unit_type_id_raw else None
+        
+        if CharacteristicType.query.filter_by(name=name).first():
+            flash('Такая характеристика уже существует', 'error')
+        else:
+            new_item = CharacteristicType(
+                name=name,
+                unit=unit_type.short_name if unit_type else None,
+                unit_type_id=unit_type.id if unit_type else None
+            )
+            db.session.add(new_item)
+            db.session.commit()
+            flash('Характеристика добавлена', 'success')
+            return redirect(url_for('admin_characteristics'))
+            
+    return render_template('admin/edit_characteristic.html', units=units)
+
+@app.route('/admin/dictionaries/characteristics/edit/<int:item_id>', methods=['GET', 'POST'])
+@login_required
+def admin_characteristic_edit(item_id):
+    item = CharacteristicType.query.get_or_404(item_id)
+    units = UnitType.query.order_by(UnitType.name).all()
+    if request.method == 'POST':
+        name = request.form.get('name')
+        unit_type_id_raw = request.form.get('unit_type_id')
+        unit_type = UnitType.query.get(int(unit_type_id_raw)) if unit_type_id_raw else None
+        
+        existing = CharacteristicType.query.filter_by(name=name).first()
+        if existing and existing.id != item_id:
+            flash('Такая характеристика уже существует', 'error')
+        else:
+            item.name = name
+            item.unit = unit_type.short_name if unit_type else None
+            item.unit_type_id = unit_type.id if unit_type else None
+            db.session.commit()
+            flash('Характеристика обновлена', 'success')
+            return redirect(url_for('admin_characteristics'))
+            
+    return render_template('admin/edit_characteristic.html', item=item, units=units)
+
+@app.route('/admin/dictionaries/characteristics/delete/<int:item_id>', methods=['POST'])
+@login_required
+def admin_characteristic_delete(item_id):
+    item = CharacteristicType.query.get_or_404(item_id)
+    db.session.delete(item)
+    db.session.commit()
+    flash('Характеристика удалена', 'success')
+    return redirect(url_for('admin_characteristics'))
+
+# --- Units ---
+@app.route('/admin/dictionaries/units')
+@login_required
+def admin_units():
+    items = UnitType.query.order_by(UnitType.name).all()
+    return render_template('admin/units.html', items=items)
+
+@app.route('/admin/dictionaries/units/add', methods=['GET', 'POST'])
+@login_required
+def admin_unit_add():
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        short_name = request.form.get('short_name', '').strip()
+        if UnitType.query.filter_by(name=name).first():
+            flash('Такая единица измерения уже существует', 'error')
+        else:
+            db.session.add(UnitType(name=name, short_name=short_name))
+            db.session.commit()
+            flash('Единица измерения добавлена', 'success')
+            return redirect(url_for('admin_units'))
+    return render_template('admin/edit_unit.html')
+
+@app.route('/admin/dictionaries/units/edit/<int:item_id>', methods=['GET', 'POST'])
+@login_required
+def admin_unit_edit(item_id):
+    item = UnitType.query.get_or_404(item_id)
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        short_name = request.form.get('short_name', '').strip()
+        existing = UnitType.query.filter_by(name=name).first()
+        if existing and existing.id != item_id:
+            flash('Такая единица измерения уже существует', 'error')
+        else:
+            item.name = name
+            item.short_name = short_name
+            db.session.commit()
+            flash('Единица измерения обновлена', 'success')
+            return redirect(url_for('admin_units'))
+    return render_template('admin/edit_unit.html', item=item)
+
+@app.route('/admin/dictionaries/units/delete/<int:item_id>', methods=['POST'])
+@login_required
+def admin_unit_delete(item_id):
+    item = UnitType.query.get_or_404(item_id)
+    if item.options or item.characteristics:
+        flash('Нельзя удалить единицу измерения, она используется в справочниках', 'error')
+        return redirect(url_for('admin_units'))
+    db.session.delete(item)
+    db.session.commit()
+    flash('Единица измерения удалена', 'success')
+    return redirect(url_for('admin_units'))
+
+# --- Options ---
+@app.route('/admin/dictionaries/options')
+@login_required
+def admin_options():
+    items = OptionType.query.order_by(OptionType.name).all()
+    return render_template('admin/options.html', items=items)
+
+@app.route('/admin/dictionaries/options/add', methods=['GET', 'POST'])
+@login_required
+def admin_option_add():
+    units = UnitType.query.order_by(UnitType.name).all()
+    if request.method == 'POST':
+        name = request.form.get('name')
+        unit_type_id_raw = request.form.get('unit_type_id')
+        unit_type = UnitType.query.get(int(unit_type_id_raw)) if unit_type_id_raw else None
+        price_raw = request.form.get('price', '0').strip().replace(',', '.')
+        try:
+            price = max(0.0, float(price_raw))
+        except ValueError:
+            price = 0.0
+        
+        if OptionType.query.filter_by(name=name).first():
+            flash('Такая опция уже существует', 'error')
+        else:
+            new_item = OptionType(name=name, price=price, unit_type_id=unit_type.id if unit_type else None)
+            db.session.add(new_item)
+            db.session.commit()
+            flash('Опция добавлена', 'success')
+            return redirect(url_for('admin_options'))
+            
+    return render_template('admin/edit_option.html', units=units)
+
+@app.route('/admin/dictionaries/options/edit/<int:item_id>', methods=['GET', 'POST'])
+@login_required
+def admin_option_edit(item_id):
+    item = OptionType.query.get_or_404(item_id)
+    units = UnitType.query.order_by(UnitType.name).all()
+    if request.method == 'POST':
+        name = request.form.get('name')
+        unit_type_id_raw = request.form.get('unit_type_id')
+        unit_type = UnitType.query.get(int(unit_type_id_raw)) if unit_type_id_raw else None
+        price_raw = request.form.get('price', '0').strip().replace(',', '.')
+        try:
+            price = max(0.0, float(price_raw))
+        except ValueError:
+            price = 0.0
+        
+        existing = OptionType.query.filter_by(name=name).first()
+        if existing and existing.id != item_id:
+            flash('Такая опция уже существует', 'error')
+        else:
+            item.name = name
+            item.price = price
+            item.unit_type_id = unit_type.id if unit_type else None
+            db.session.commit()
+            flash('Опция обновлена', 'success')
+            return redirect(url_for('admin_options'))
+            
+    return render_template('admin/edit_option.html', item=item, units=units)
+
+@app.route('/admin/dictionaries/options/delete/<int:item_id>', methods=['POST'])
+@login_required
+def admin_option_delete(item_id):
+    item = OptionType.query.get_or_404(item_id)
+    PropertyOption.query.filter_by(option_type_id=item_id).delete(synchronize_session=False)
+    BookingOption.query.filter_by(option_type_id=item_id).update(
+        {BookingOption.option_type_id: None},
+        synchronize_session=False
+    )
+    db.session.delete(item)
+    db.session.commit()
+    flash('Опция удалена', 'success')
+    return redirect(url_for('admin_options'))
+
 
 if __name__ == '__main__':
     with app.app_context():

@@ -117,9 +117,9 @@
     <div class="container h-100 d-flex align-items-center">
         <div class="hero-content text-center">
             <h1 class="hero-title mb-4">{{ site_settings.site_name if site_settings else 'Imperial Collection' }}</h1>
-            <p class="hero-subtitle mb-2">Псковский берег</p>
+            <p class="hero-subtitle mb-2">Подари себе тишину</p>
             <div class="hero-divider mx-auto mb-4"></div>
-            <p class="hero-tagline mb-5">Три грани настоящего отдыха</p>
+            <p class="hero-tagline mb-5">В объятиях природы, вдали от забот</p>
             <a href="#properties" class="btn btn-primary btn-lg px-5 py-3">
                 <i class="bi bi-arrow-down-circle me-2"></i> Выбрать отдых
             </a>
@@ -132,7 +132,7 @@
     <div class="container">
         <div class="text-center mb-5">
             <h2 class="section-title">Наши объекты</h2>
-            <p class="section-subtitle">Три уникальных места для вашего идеального отдыха</p>
+            <p class="section-subtitle">Уникальные места для вашего идеального отдыха</p>
         </div>
         
         <div class="row g-4">
@@ -161,8 +161,8 @@
                         <p class="property-description">{{ property.short_description }}</p>
                         
                         <div class="property-features mb-3">
-                            {% for feature in property.features|from_json %}
-                                <span class="feature-tag">{{ feature }}</span>
+                            {% for property_option in property.property_options %}
+                                <span class="feature-tag">{{ property_option.option_type.name }}</span>
                             {% endfor %}
                         </div>
                         

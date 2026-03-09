@@ -9,6 +9,92 @@
         background: #198754;
         border-color: #198754;
     }
+    .booking-options-panel {
+        background-color: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .booking-options-panel .booking-option-row {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 0.5rem;
+    }
+    .booking-options-panel .booking-option-row:last-child {
+        border-bottom: 0;
+        margin-bottom: 0 !important;
+        padding-bottom: 0;
+    }
+    .booking-options-header {
+        font-size: 0.82rem;
+        letter-spacing: 0.01em;
+        color: var(--text-muted);
+        margin-bottom: 0.4rem;
+    }
+    .booking-option-cost {
+        color: var(--text-light);
+        font-weight: 600;
+        text-align: right;
+        white-space: nowrap;
+    }
+    .booking-options-total-panel {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 0.7rem;
+        padding-top: 0.55rem;
+        margin-top: 0.4rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
+        font-weight: 700;
+        color: var(--text-light);
+    }
+    .booking-options-total-panel .label {
+        color: var(--text-muted);
+        letter-spacing: 0.02em;
+    }
+    .booking-summary-table > tbody > tr > td {
+        background-color: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.1);
+        color: var(--text-light);
+        padding: 0.5rem 0.65rem;
+        font-size: 0.86rem;
+    }
+    .booking-summary-table > tbody > tr.total-row > td {
+        background-color: rgba(45, 255, 153, 0.12);
+        font-weight: 700;
+    }
+    .booking-option-qty {
+        background-color: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        color: var(--text-light) !important;
+    }
+    .booking-option-qty:disabled {
+        background-color: rgba(255, 255, 255, 0.03) !important;
+        border-color: rgba(255, 255, 255, 0.1);
+        color: var(--text-muted) !important;
+    }
+    .booking-option-row.option-selected .booking-option-qty {
+        background-color: rgba(45, 255, 153, 0.15) !important;
+        border-color: rgba(45, 255, 153, 0.55);
+        color: #d8ffe9 !important;
+    }
+    .booking-option-row.option-selected .form-check-label {
+        color: #d8ffe9;
+        font-weight: 600;
+    }
+    .booking-option-qty:focus {
+        border-color: rgba(45, 255, 153, 0.75);
+        box-shadow: 0 0 0 0.15rem rgba(45, 255, 153, 0.2);
+    }
+    #captchaQuestion {
+        background-color: rgba(255, 255, 255, 0.08) !important;
+        border-color: rgba(255, 255, 255, 0.2) !important;
+        color: var(--text-light) !important;
+    }
+    .booking-char-table > tbody > tr > td {
+        color: var(--text-light);
+        background-color: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.1);
+        padding: 0.55rem 0.75rem;
+        font-size: 0.9rem;
+    }
 </style>
 {% endblock %}
 
@@ -59,6 +145,55 @@
                                     <textarea name="special_requests" class="form-control" rows="3"
                                               placeholder="Опишите ваши пожелания..."></textarea>
                                 </div>
+                                {% if property_options %}
+                                <div class="col-12">
+                                    <label class="form-label">Опции</label>
+                                    <div class="card border-0 booking-options-panel">
+                                        <div class="card-body">
+                                            <div class="row g-2 booking-options-header">
+                                                <div class="col-md-5">Опция</div>
+                                                <div class="col-md-2">Кол-во</div>
+                                                <div class="col-md-2 text-md-end">Тариф</div>
+                                                <div class="col-md-3 text-md-end">Стоимость</div>
+                                            </div>
+                                            {% for property_option in property_options %}
+                                            <div class="row g-2 align-items-center mb-2 booking-option-row">
+                                                <div class="col-md-5">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input booking-option-input" type="checkbox"
+                                                               name="selected_options" value="{{ property_option.option_type_id }}"
+                                                               id="booking_opt_{{ property_option.option_type_id }}"
+                                                               data-price="{{ property_option.option_type.price if property_option.option_type.price is not none else 0 }}">
+                                                        <label class="form-check-label" for="booking_opt_{{ property_option.option_type_id }}">
+                                                            {{ property_option.option_type.name }}
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <input type="number"
+                                                           class="form-control form-control-sm booking-option-qty"
+                                                           name="option_qty_{{ property_option.option_type_id }}"
+                                                           value="1"
+                                                           min="1"
+                                                           step="1"
+                                                           disabled>
+                                                </div>
+                                                <div class="col-md-2 text-md-end">
+                                                    <small class="text-muted">
+                                                        {{ property_option.option_type.price|format_price }} ₽{% if property_option.option_type.unit_type %}/{{ property_option.option_type.unit_type.short_name }}{% endif %}
+                                                    </small>
+                                                </div>
+                                                <div class="col-md-3 booking-option-cost option-line-cost">0 ₽</div>
+                                            </div>
+                                            {% endfor %}
+                                            <div class="booking-options-total-panel">
+                                                <span class="label">ИТОГО:</span>
+                                                <span id="optionsInlineTotal">0 ₽</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
                                 <div class="col-12">
                                     <div id="availabilityMessage" class="alert d-none"></div>
                                 </div>
@@ -66,7 +201,7 @@
                                     <label class="form-label">Решите пример *</label>
                                     <div class="d-flex align-items-center gap-3">
                                         <div class="position-relative">
-                                            <div id="captchaQuestion" class="form-control d-flex align-items-center justify-content-center bg-white text-dark fw-bold fs-4" style="height: 50px; min-width: 120px; cursor: default; user-select: none;">
+                                            <div id="captchaQuestion" class="form-control d-flex align-items-center justify-content-center fw-bold fs-4" style="height: 50px; min-width: 120px; cursor: default; user-select: none;">
                                                 {{ captcha_question }}
                                             </div>
                                         </div>
@@ -103,6 +238,29 @@
                             <span>Цена за ночь:</span>
                             <strong>{{ property.price_per_night|format_price }} ₽</strong>
                         </div>
+                        {% if property.characteristics %}
+                        <hr>
+                        <h6 class="mb-2">Характеристики</h6>
+                        <div class="table-responsive">
+                            <table class="table booking-char-table mb-0">
+                                <tbody>
+                                    {% for char in property.characteristics %}
+                                    <tr>
+                                        <td class="text-muted">{{ char.characteristic_type.name }}</td>
+                                        <td class="text-end">
+                                            {{ char.value }}
+                                            {% if char.characteristic_type.unit_type %}
+                                                {{ char.characteristic_type.unit_type.short_name }}
+                                            {% elif char.characteristic_type.unit %}
+                                                {{ char.characteristic_type.unit }}
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
                         <hr>
                         <div id="totalPrice" class="text-center">
                             <small class="text-muted">Выберите даты для расчета стоимости</small>
@@ -129,6 +287,8 @@
             </div>
             <div class="modal-footer border-0 pt-0 justify-content-center">
                 <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Закрыть</button>
+                <button type="button" class="btn btn-outline-info px-4" id="bookingPrintBtn" style="display: none;">Распечатать заявку (PDF)</button>
+                <button type="button" class="btn btn-outline-warning px-4" id="bookingPayBtn" style="display: none;">Оплатить</button>
                 <a href="{{ url_for('index') }}" class="btn btn-primary px-4" id="bookingSuccessBtn" style="display: none;">На главную</a>
             </div>
         </div>
@@ -176,6 +336,132 @@
         const modalHeading = document.getElementById('bookingModalHeading');
         const modalMessage = document.getElementById('bookingModalMessage');
         const successBtn = document.getElementById('bookingSuccessBtn');
+        const printBtn = document.getElementById('bookingPrintBtn');
+        const payBtn = document.getElementById('bookingPayBtn');
+        let lastBookingPrintData = null;
+
+        const collectBookingPrintData = (formData) => {
+            const checkIn = formData.get('check_in') || '';
+            const checkOut = formData.get('check_out') || '';
+            const guestName = formData.get('guest_name') || '';
+            const guestPhone = formData.get('guest_phone') || '';
+            const guestEmail = formData.get('guest_email') || '';
+            const guestsCount = Number(formData.get('guests_count') || 1);
+            const options = [];
+            let optionsTotal = 0;
+
+            optionRows.forEach(row => {
+                const checkbox = row.querySelector('.booking-option-input');
+                const qtyInput = row.querySelector('.booking-option-qty');
+                const optionLabel = row.querySelector('.form-check-label');
+                if (!checkbox || !qtyInput || !checkbox.checked) {
+                    return;
+                }
+                const pricePerUnit = Number(checkbox.dataset.price || 0);
+                const qty = Math.max(1, Number(qtyInput.value || 1));
+                const lineTotal = pricePerUnit * qty;
+                optionsTotal += lineTotal;
+                options.push({
+                    name: optionLabel ? optionLabel.textContent.trim() : 'Опция',
+                    qty,
+                    pricePerUnit,
+                    lineTotal
+                });
+            });
+
+            return {
+                propertyName: {{ property.name|tojson }},
+                propertyLocation: {{ property.location|tojson }},
+                propertyLatitude: {{ property.latitude|tojson }},
+                propertyLongitude: {{ property.longitude|tojson }},
+                checkIn,
+                checkOut,
+                guestName,
+                guestPhone,
+                guestEmail,
+                guestsCount: Math.max(1, guestsCount),
+                options,
+                optionsTotal,
+                createdAt: new Date().toLocaleString('ru-RU')
+            };
+        };
+
+        const printBookingApplication = () => {
+            if (!lastBookingPrintData) {
+                return;
+            }
+            const data = lastBookingPrintData;
+            const optionsRows = data.options.length
+                ? data.options.map(item => `<tr><td>${item.name}</td><td>${item.qty}</td><td>${item.pricePerUnit.toLocaleString('ru-RU')} ₽</td><td>${item.lineTotal.toLocaleString('ru-RU')} ₽</td></tr>`).join('')
+                : '<tr><td colspan="4" style="text-align:center;color:#666;">Опции не выбраны</td></tr>';
+
+            const printWindow = window.open('', '_blank', 'width=980,height=760');
+            if (!printWindow) {
+                return;
+            }
+
+            const html = `
+                <!doctype html>
+                <html lang="ru">
+                <head>
+                    <meta charset="utf-8">
+                    <title>Заявка на бронирование</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; color: #222; }
+                        h1 { margin: 0 0 12px; font-size: 24px; }
+                        .meta { margin-bottom: 14px; line-height: 1.45; }
+                        .label { font-weight: 700; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 14px; }
+                        th { background: #f3f3f3; }
+                        .total { margin-top: 12px; text-align: right; font-size: 16px; font-weight: 700; }
+                    </style>
+                </head>
+                <body>
+                    <h1>Заявка на бронирование</h1>
+                    <div class="meta">
+                        <div><span class="label">Объект:</span> ${data.propertyName}</div>
+                        <div><span class="label">Локация:</span> ${data.propertyLocation}</div>
+                        <div><span class="label">Координаты:</span> ${data.propertyLatitude !== null && data.propertyLongitude !== null ? `${data.propertyLatitude}, ${data.propertyLongitude}` : 'Не указаны'}</div>
+                        <div><span class="label">Дата заявки:</span> ${data.createdAt}</div>
+                        <div><span class="label">Заезд:</span> ${data.checkIn}</div>
+                        <div><span class="label">Выезд:</span> ${data.checkOut}</div>
+                        <div><span class="label">Гостей:</span> ${data.guestsCount}</div>
+                        <div><span class="label">Гость:</span> ${data.guestName}</div>
+                        <div><span class="label">Телефон:</span> ${data.guestPhone}</div>
+                        <div><span class="label">Email:</span> ${data.guestEmail}</div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Опция</th>
+                                <th>Кол-во</th>
+                                <th>Тариф</th>
+                                <th>Стоимость</th>
+                            </tr>
+                        </thead>
+                        <tbody>${optionsRows}</tbody>
+                    </table>
+                    <div class="total">ИТОГО по опциям: ${data.optionsTotal.toLocaleString('ru-RU')} ₽</div>
+                </body>
+                </html>
+            `;
+
+            printWindow.document.open();
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.focus();
+            printWindow.print();
+        };
+
+        if (printBtn) {
+            printBtn.addEventListener('click', printBookingApplication);
+        }
+        if (payBtn) {
+            payBtn.addEventListener('click', () => {
+                modalMessage.textContent = 'Функционал оплаты будет добавлен в ближайшем обновлении.';
+            });
+        }
 
         bookingForm.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -203,12 +489,18 @@
             })
             .then(data => {
                 if (data.status === 'success') {
+                    lastBookingPrintData = collectBookingPrintData(formData);
                     modalIcon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
                     modalHeading.textContent = 'Бронирование создано!';
                     modalHeading.className = 'mb-3 text-success';
                     modalMessage.textContent = data.message;
                     successBtn.style.display = 'inline-block';
-                    bookingForm.reset();
+                    if (printBtn) {
+                        printBtn.style.display = 'inline-block';
+                    }
+                    if (payBtn) {
+                        payBtn.style.display = 'inline-block';
+                    }
                     // Optional: redirect after delay? No, user can click button.
                 } else {
                     modalIcon.innerHTML = '<i class="bi bi-x-circle-fill text-danger"></i>';
@@ -216,6 +508,12 @@
                     modalHeading.className = 'mb-3 text-danger';
                     modalMessage.textContent = data.message;
                     successBtn.style.display = 'none';
+                    if (printBtn) {
+                        printBtn.style.display = 'none';
+                    }
+                    if (payBtn) {
+                        payBtn.style.display = 'none';
+                    }
                     // Refresh captcha on error
                     refreshCaptcha();
                 }
@@ -238,8 +536,81 @@
         
     const propertyId = {{ property.id }};
     const pricePerNight = {{ property.price_per_night }};
+    const propertyLatitude = {{ property.latitude|tojson }};
+    const propertyLongitude = {{ property.longitude|tojson }};
     const totalPriceDiv = document.getElementById('totalPrice');
     const availabilityMsg = document.getElementById('availabilityMessage');
+    const guestsInput = bookingForm.querySelector('input[name="guests_count"]');
+    const optionRows = document.querySelectorAll('.booking-option-row');
+    const optionInputs = document.querySelectorAll('.booking-option-input');
+    const optionsInlineTotalEl = document.getElementById('optionsInlineTotal');
+    const hasCoordinates = propertyLatitude !== null && propertyLongitude !== null;
+    const coordinatesText = hasCoordinates ? `${propertyLatitude}, ${propertyLongitude}` : 'Не указаны';
+    let calculatePrice = function() {};
+    const triggerRecalculate = () => window.requestAnimationFrame(() => calculatePrice());
+
+    function setOptionRowState(optionRow, isSelected) {
+        optionRow.classList.toggle('option-selected', isSelected);
+    }
+
+    function updateOptionsInlineCosts() {
+        let optionsInlineTotal = 0;
+        optionRows.forEach(row => {
+            const checkbox = row.querySelector('.booking-option-input');
+            const qtyInput = row.querySelector('.booking-option-qty');
+            const optionCostEl = row.querySelector('.option-line-cost');
+            if (!checkbox || !qtyInput || !optionCostEl) {
+                return;
+            }
+            const pricePerUnit = Number(checkbox.dataset.price || 0);
+            const qty = Math.max(1, Number(qtyInput.value || 1));
+            const optionLineTotal = checkbox.checked ? pricePerUnit * qty : 0;
+            optionCostEl.textContent = `${optionLineTotal.toLocaleString('ru-RU')} ₽`;
+            optionsInlineTotal += optionLineTotal;
+        });
+        if (optionsInlineTotalEl) {
+            optionsInlineTotalEl.textContent = `${optionsInlineTotal.toLocaleString('ru-RU')} ₽`;
+        }
+    }
+
+    optionInputs.forEach(input => {
+        const onOptionToggle = function() {
+            const optionRow = this.closest('.booking-option-row');
+            if (optionRow) {
+                const qtyInput = optionRow.querySelector('.booking-option-qty');
+                if (qtyInput) {
+                    qtyInput.disabled = !this.checked;
+                    if (!this.checked) {
+                        qtyInput.value = 1;
+                    }
+                }
+                setOptionRowState(optionRow, this.checked);
+            }
+            triggerRecalculate();
+        };
+        input.addEventListener('input', onOptionToggle);
+        input.addEventListener('change', onOptionToggle);
+    });
+    optionRows.forEach(row => {
+        const checkbox = row.querySelector('.booking-option-input');
+        if (checkbox) {
+            setOptionRowState(row, checkbox.checked);
+        }
+        const optionCostEl = row.querySelector('.option-line-cost');
+        if (optionCostEl) {
+            optionCostEl.textContent = '0 ₽';
+        }
+        const qtyInput = row.querySelector('.booking-option-qty');
+        if (qtyInput) {
+            qtyInput.addEventListener('input', triggerRecalculate);
+            qtyInput.addEventListener('change', triggerRecalculate);
+            qtyInput.addEventListener('keyup', triggerRecalculate);
+        }
+    });
+    if (guestsInput) {
+        guestsInput.addEventListener('input', triggerRecalculate);
+        guestsInput.addEventListener('change', triggerRecalculate);
+    }
     
     // Fetch busy dates
     fetch(`/api/properties/${propertyId}/busy-dates`)
@@ -247,7 +618,10 @@
         .then(busyDates => {
             initCalendar(busyDates);
         })
-        .catch(err => console.error('Error fetching busy dates:', err));
+        .catch(err => {
+            console.error('Error fetching busy dates:', err);
+            initCalendar([]);
+        });
         
     function initCalendar(busyDates) {
         const disableDates = busyDates.map(d => {
@@ -289,7 +663,8 @@
             }
         });
         
-        function calculatePrice() {
+        calculatePrice = function() {
+            updateOptionsInlineCosts();
             const checkInDate = fp.selectedDates[0];
             const checkOutDate = checkOutPicker.selectedDates[0];
             
@@ -332,17 +707,63 @@
 
                 const diffTime = Math.abs(checkOutDate - checkInDate);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                const total = diffDays * pricePerNight;
-                
+                const baseTotal = diffDays * pricePerNight;
+                const guestsCount = Math.max(1, Number(guestsInput ? guestsInput.value : 1) || 1);
+                let optionsTotal = 0;
+                let selectedOptionsRows = '';
+
+                optionRows.forEach(row => {
+                    const checkbox = row.querySelector('.booking-option-input');
+                    const qtyInput = row.querySelector('.booking-option-qty');
+                    const optionLabel = row.querySelector('.form-check-label');
+                    const optionCostEl = row.querySelector('.option-line-cost');
+                    if (checkbox && qtyInput && checkbox.checked) {
+                        const pricePerUnit = Number(checkbox.dataset.price || 0);
+                        const qty = Math.max(1, Number(qtyInput.value || 1));
+                        const optionTotal = pricePerUnit * qty * diffDays;
+                        optionsTotal += optionTotal;
+                        selectedOptionsRows += `<tr><td>${optionLabel ? optionLabel.textContent.trim() : 'Опция'}</td><td class="text-end">${qty} × ${diffDays}</td><td class="text-end">${optionTotal.toLocaleString('ru-RU')} ₽</td></tr>`;
+                    }
+                });
+
+                const total = baseTotal + optionsTotal;
+
+                if (!selectedOptionsRows) {
+                    selectedOptionsRows = `<tr><td colspan="3" class="text-center text-muted">Опции не выбраны</td></tr>`;
+                }
+
                 totalPriceDiv.innerHTML = `
-                    <div class="mb-2"><strong>${diffDays} ночей</strong></div>
-                    <div class="h4 text-primary mb-0">${total.toLocaleString('ru-RU')} ₽</div>
+                    <div class="small text-muted mb-2">Гостей: ${guestsCount} • Ночей: ${diffDays}</div>
+                    <div class="small text-muted mb-2">Координаты: ${coordinatesText}</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm booking-summary-table mb-0">
+                            <tbody>
+                                <tr>
+                                    <td>Базовое проживание</td>
+                                    <td class="text-end">${diffDays} × ${pricePerNight.toLocaleString('ru-RU')}</td>
+                                    <td class="text-end">${baseTotal.toLocaleString('ru-RU')} ₽</td>
+                                </tr>
+                                ${selectedOptionsRows}
+                                <tr>
+                                    <td><strong>Опции всего</strong></td>
+                                    <td></td>
+                                    <td class="text-end"><strong>${optionsTotal.toLocaleString('ru-RU')} ₽</strong></td>
+                                </tr>
+                                <tr class="total-row">
+                                    <td><strong>Итого</strong></td>
+                                    <td></td>
+                                    <td class="text-end"><strong>${total.toLocaleString('ru-RU')} ₽</strong></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 `;
             } else {
                 totalPriceDiv.innerHTML = '<small class="text-muted">Выберите даты для расчета стоимости</small>';
                 availabilityMsg.classList.add('d-none');
             }
         }
+        calculatePrice();
     }
 });
 </script>

@@ -429,6 +429,33 @@ body {
     border-radius: 8px;
 }
 
+.property-spec-table {
+    margin-bottom: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.property-spec-table > tbody > tr > th,
+.property-spec-table > tbody > tr > td {
+    color: var(--text-light);
+    background-color: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+    padding: 0.9rem 1rem;
+}
+
+.property-spec-table > tbody > tr > th {
+    width: 40%;
+    font-weight: 600;
+    color: var(--text-muted);
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.property-spec-table > tbody > tr:nth-child(even) > th,
+.property-spec-table > tbody > tr:nth-child(even) > td {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
 .features-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

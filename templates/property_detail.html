@@ -220,37 +220,48 @@
             </div>
         </div>
 
-        <!-- Amenities -->
+        <!-- Characteristics -->
+        {% if property.characteristics %}
         <div class="row mt-5">
             <div class="col-12">
-                <h3 class="mb-4">Удобства</h3>
+                <h3 class="mb-4">Характеристики</h3>
+                <div class="table-responsive">
+                    <table class="table property-spec-table">
+                        <tbody>
+                            {% for char in property.characteristics %}
+                            <tr>
+                                <th scope="row">{{ char.characteristic_type.name }}</th>
+                                <td>{{ char.value }} {% if char.characteristic_type.unit_type %}{{ char.characteristic_type.unit_type.short_name }}{% elif char.characteristic_type.unit %}{{ char.characteristic_type.unit }}{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Options -->
+        {% if property.property_options %}
+        <div class="row mt-5">
+            <div class="col-12">
+                <h3 class="mb-4">Опции</h3>
                 <div class="row">
-                    {% for amenity in property.amenities|from_json %}
+                    {% for property_option in property.property_options %}
                     <div class="col-md-3 col-sm-6 mb-3">
                         <div class="amenity-item">
                             <i class="bi bi-check-circle-fill text-success me-2"></i>
-                            {{ amenity }}
+                            {{ property_option.option_type.name }}
+                            {% if property_option.option_type.price > 0 %}
+                            <span class="text-muted">(+{{ property_option.option_type.price|format_price }} ₽{% if property_option.option_type.unit_type %}/{{ property_option.option_type.unit_type.short_name }}{% endif %})</span>
+                            {% endif %}
                         </div>
                     </div>
                     {% endfor %}
                 </div>
             </div>
         </div>
-
-        <!-- Features -->
-        <div class="row mt-5">
-            <div class="col-12">
-                <h3 class="mb-4">Особенности</h3>
-                <div class="features-grid">
-                    {% for feature in property.features|from_json %}
-                    <div class="feature-card">
-                        <i class="bi bi-star-fill text-warning me-2"></i>
-                        {{ feature }}
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
+        {% endif %}
 
         <!-- Back Button -->
         <div class="mt-5">

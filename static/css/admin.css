@@ -158,6 +158,15 @@ body {
     color: var(--admin-text);
 }
 
+.table-light,
+.table-light > th,
+.table-light > td,
+.table > thead.table-light > tr > th {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    color: var(--admin-text) !important;
+    border-color: var(--admin-border) !important;
+}
+
 /* Forms */
 .form-control, .form-select {
     background-color: #2b2b2b;
@@ -214,9 +223,24 @@ body {
 
 .table th {
     font-weight: 600;
-    color: #555;
-    background-color: #f8f9fa;
-    border-bottom: 2px solid #e9ecef;
+    color: var(--admin-text-muted);
+    background-color: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--admin-border);
+}
+
+.option-prices-table td,
+.option-prices-table th {
+    vertical-align: middle;
+}
+
+.option-prices-table .form-check-input {
+    margin-top: 0;
+}
+
+.option-price-controls {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 0.5rem;
 }
 
 .badge {

@@ -1,0 +1,35 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}{{ 'Редактировать' if item else 'Добавить' }} единицу измерения{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>{{ 'Редактировать' if item else 'Добавить' }} единицу измерения</h2>
+            <a href="{{ url_for('admin_units') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Назад
+            </a>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Название *</label>
+                        <input type="text" class="form-control" id="name" name="name" value="{{ item.name if item else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="short_name" class="form-label">Сокращение *</label>
+                        <input type="text" class="form-control" id="short_name" name="short_name" value="{{ item.short_name if item else '' }}" required>
+                    </div>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('admin_units') }}" class="btn btn-outline-secondary me-md-2">Отмена</a>
+                        <button type="submit" class="btn btn-primary">Сохранить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

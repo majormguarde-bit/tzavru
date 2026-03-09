@@ -82,6 +82,30 @@
                         <div class="form-text">Рассчитывается автоматически при создании, но можно изменить вручную</div>
                     </div>
 
+                    {% if booking and booking.selected_options %}
+                    <div class="col-12">
+                        <h6 class="mt-2 mb-2">Выбранные опции</h6>
+                        <div class="card border-0 bg-light">
+                            <div class="card-body py-2">
+                                {% set nights = (booking.check_out - booking.check_in).days %}
+                                <ul class="mb-0 ps-3">
+                                    {% for item in booking.selected_options %}
+                                    <li>{{ item.option_name }} (+{{ (item.price * item.quantity * nights)|format_price }} ₽)</li>
+                                    {% endfor %}
+                                </ul>
+                                <div class="small text-muted mt-2">
+                                    Сумма доплат по опциям:
+                                    {% set ns = namespace(options_total=0) %}
+                                    {% for item in booking.selected_options %}
+                                        {% set ns.options_total = ns.options_total + (item.price * item.quantity * nights) %}
+                                    {% endfor %}
+                                    {{ ns.options_total|format_price }} ₽
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <div class="col-12">
                         <label class="form-label">Особые пожелания</label>
                         <textarea name="special_requests" class="form-control" rows="3">{{ booking.special_requests if booking else '' }}</textarea>

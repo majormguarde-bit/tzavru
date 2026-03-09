@@ -48,6 +48,7 @@
             });
         }
     }
+
 </script>
 {% endblock %}
 
@@ -240,16 +241,75 @@
                             </div>
                         </div>
                         
-                        <div class="col-md-6">
-                            <label class="form-label">Удобства (по одному на строку)</label>
-                            <textarea name="amenities" class="form-control" rows="5" placeholder="Баня&#10;Мангал&#10;Бассейн">{% if property %}{% for amenity in property.amenities|from_json %}{{ amenity }}
-{% endfor %}{% endif %}</textarea>
+                        {# Characteristics Table #}
+                        <div class="col-12 mt-4">
+                            <h5 class="mb-3">Характеристики объекта</h5>
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Характеристика</th>
+                                            <th style="width: 20%;">Единица измерения</th>
+                                            <th style="width: 45%;">Значение</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for char_type in all_characteristics %}
+                                        <tr>
+                                            <td>{{ char_type.name }}</td>
+                                            <td>{{ char_type.unit_type.short_name if char_type.unit_type else (char_type.unit or '-') }}</td>
+                                            <td>
+                                                <input type="text" name="char_{{ char_type.id }}" class="form-control form-control-sm" 
+                                                       value="{{ property_characteristics.get(char_type.id, '') }}">
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label">Особенности (по одному на строку)</label>
-                            <textarea name="features" class="form-control" rows="5" placeholder="Охота с егерем&#10;Рыбалка&#10;Закрытая территория">{% if property %}{% for feature in property.features|from_json %}{{ feature }}
-{% endfor %}{% endif %}</textarea>
+
+                        {# Options Checkboxes #}
+                        <div class="col-12 mt-4">
+                            <h5 class="mb-3">Опции и стоимость</h5>
+                            <div class="card p-3 bg-light">
+                                <div class="table-responsive">
+                                    <table class="table table-sm align-middle mb-0 option-prices-table">
+                                        <thead>
+                                            <tr>
+                                                <th width="5%">№</th>
+                                                <th width="10%">Чек-бокс</th>
+                                                <th>Опция</th>
+                                                <th width="18%">Единица измерения</th>
+                                                <th width="28%">Стоимость</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for option in all_options %}
+                                            <tr>
+                                                <td>{{ loop.index }}</td>
+                                                <td>
+                                                    <div class="form-check m-0">
+                                                        <input class="form-check-input" type="checkbox" name="options" value="{{ option.id }}" id="opt_{{ option.id }}"
+                                                            {% if option.id in selected_option_ids %}checked{% endif %}>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <label class="form-check-label mb-0" for="opt_{{ option.id }}">{{ option.name }}</label>
+                                                </td>
+                                                <td>{{ option.unit_type.short_name if option.unit_type else '-' }}</td>
+                                                <td>
+                                                    <input type="text" class="form-control form-control-sm"
+                                                           id="opt_price_{{ option.id }}"
+                                                           value="{{ (option.price if option.price is not none else 0)|format_price }}"
+                                                           readonly>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                         
                         <div class="col-12 mt-4">
