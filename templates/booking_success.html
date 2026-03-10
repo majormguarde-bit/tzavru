@@ -30,7 +30,7 @@
                         {% endif %}
 
                         <div class="row g-3">
-                            <div class="col-12 col-md-6">
+                            <div class="col-12 col-md-4">
                                 <div class="border border-secondary rounded p-3 h-100">
                                     <div class="fw-semibold mb-2">Passkey (биометрия)</div>
                                     <div class="text-muted small mb-3">Привязывает это устройство к бронированию. В следующий раз вход — по Face ID/Touch ID.</div>
@@ -38,12 +38,20 @@
                                     <div id="passkey-status" class="small text-muted mt-2"></div>
                                 </div>
                             </div>
-                            <div class="col-12 col-md-6">
+                            <div class="col-12 col-md-4">
                                 <div class="border border-secondary rounded p-3 h-100">
                                     <div class="fw-semibold mb-2">Уведомления</div>
                                     <div class="text-muted small mb-3">Приходят бесплатно через Web Push. На iPhone требуется “Добавить на экран”.</div>
                                     <button id="btn-push" class="btn btn-outline-light w-100" type="button">Включить уведомления</button>
                                     <div id="push-status" class="small text-muted mt-2"></div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-4">
+                                <div class="border border-secondary rounded p-3 h-100">
+                                    <div class="fw-semibold mb-2">Заявка (PDF)</div>
+                                    <div class="text-muted small mb-3">Распечатать или сохранить детали бронирования для личного использования.</div>
+                                    <button id="btn-print" class="btn btn-outline-light w-100" type="button">Распечатать заявку</button>
+                                    <div class="small text-muted mt-2">&nbsp;</div>
                                 </div>
                             </div>
                         </div>
@@ -96,6 +104,34 @@
         var cancelledBadge = document.getElementById('cancelled-badge');
         var copyBtn = document.getElementById('btn-copy-link');
         var copyStatus = document.getElementById('copy-status');
+        var printBtn = document.getElementById('btn-print');
+
+        // Booking data for print
+        var bookingData = {
+            propertyName: {{ booking.property.name|tojson }},
+            propertyLocation: {{ booking.property.location|tojson }},
+            propertyLatitude: {{ booking.property.latitude|tojson }},
+            propertyLongitude: {{ booking.property.longitude|tojson }},
+            checkIn: "{{ booking.check_in.strftime('%d.%m.%Y') }}",
+            checkOut: "{{ booking.check_out.strftime('%d.%m.%Y') }}",
+            guestName: {{ booking.guest_name|tojson }},
+            guestPhone: {{ booking.guest_phone|tojson }},
+            guestEmail: {{ booking.guest_email|tojson }},
+            guestsCount: {{ booking.guests_count }},
+            options: [
+                {% for item in booking.selected_options %}
+                {
+                    name: {{ item.option_name|tojson }},
+                    qty: {{ item.quantity }},
+                    pricePerUnit: {{ item.price }},
+                    lineTotal: {{ item.price * item.quantity * ((booking.check_out - booking.check_in).days) }}
+                },
+                {% endfor %}
+            ],
+            optionsTotal: {{ booking.total_price - (booking.property.price_per_night * ((booking.check_out - booking.check_in).days)) }},
+            totalPrice: {{ booking.total_price }},
+            createdAt: "{{ booking.created_at.strftime('%d.%m.%Y %H:%M') if booking.created_at else '' }}"
+        };
 
         function setStatus(el, msg, isError) {
             el.textContent = msg || '';
@@ -138,9 +174,88 @@
             return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
         }
 
+        if (printBtn) {
+            printBtn.addEventListener('click', function() {
+                var data = bookingData;
+                var optionsRows = data.options.length
+                    ? data.options.map(item => `<tr><td>${item.name}</td><td>${item.qty}</td><td>${item.pricePerUnit.toLocaleString('ru-RU')} ₽</td><td>${item.lineTotal.toLocaleString('ru-RU')} ₽</td></tr>`).join('')
+                    : '<tr><td colspan="4" style="text-align:center;color:#666;">Опции не выбраны</td></tr>';
+
+                var printWindow = window.open('', '_blank', 'width=980,height=760');
+                if (!printWindow) return;
+
+                var html = `
+                    <!doctype html>
+                    <html lang="ru">
+                    <head>
+                        <meta charset="utf-8">
+                        <title>Заявка на бронирование #${ {{ booking.id }} }</title>
+                        <style>
+                            body { font-family: Arial, sans-serif; margin: 20px; color: #222; }
+                            h1 { margin: 0 0 12px; font-size: 24px; }
+                            .meta { margin-bottom: 14px; line-height: 1.45; }
+                            .label { font-weight: 700; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 14px; }
+                            th { background: #f3f3f3; }
+                            .total { margin-top: 12px; text-align: right; font-size: 16px; font-weight: 700; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Заявка на бронирование #${ {{ booking.id }} }</h1>
+                        <div class="meta">
+                            <div><span class="label">Объект:</span> ${data.propertyName}</div>
+                            <div><span class="label">Локация:</span> ${data.propertyLocation}</div>
+                            <div><span class="label">Дата заявки:</span> ${data.createdAt}</div>
+                            <div><span class="label">Заезд:</span> ${data.checkIn}</div>
+                            <div><span class="label">Выезд:</span> ${data.checkOut}</div>
+                            <div><span class="label">Гостей:</span> ${data.guestsCount}</div>
+                            <div><span class="label">Гость:</span> ${data.guestName}</div>
+                            <div><span class="label">Телефон:</span> ${data.guestPhone}</div>
+                            <div><span class="label">Email:</span> ${data.guestEmail}</div>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Опция</th>
+                                    <th>Кол-во</th>
+                                    <th>Тариф</th>
+                                    <th>Стоимость</th>
+                                </tr>
+                            </thead>
+                            <tbody>${optionsRows}</tbody>
+                        </table>
+                        <div class="total">ИТОГО к оплате: ${data.totalPrice.toLocaleString('ru-RU')} ₽</div>
+                    </body>
+                    </html>
+                `;
+
+                printWindow.document.open();
+                printWindow.document.write(html);
+                printWindow.document.close();
+                printWindow.focus();
+                printWindow.print();
+            });
+        }
+
         if (isIos() && !isStandalone()) {
             var hint = document.getElementById('a2hs-hint');
             if (hint) hint.classList.remove('d-none');
+        }
+
+        // Check for secure context (HTTPS)
+        if (!window.isSecureContext) {
+            var httpsWarning = 'Внимание: функции Passkey и уведомлений требуют защищенного соединения (HTTPS). На локальном адресе или HTTP они могут быть недоступны.';
+            setStatus(passkeyStatus, httpsWarning, true);
+            setStatus(pushStatus, httpsWarning, true);
+        }
+        
+        // Check for IP address access (WebAuthn doesn't allow IP as RP ID)
+        var hostname = window.location.hostname;
+        var isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(hostname);
+        if (isIp && hostname !== '127.0.0.1') {
+            var ipWarning = 'Passkey не работает при доступе по IP-адресу (' + hostname + '). Используйте доменное имя (например, imperial-collection.ru) или localhost.';
+            setStatus(passkeyStatus, ipWarning, true);
         }
 
         function urlBase64ToUint8Array(base64String) {
@@ -177,10 +292,28 @@
         }
 
         async function enablePush() {
-            if (!('serviceWorker' in navigator)) {
-                setStatus(pushStatus, 'Service Worker не поддерживается в этом браузере.', true);
+            if (!window.isSecureContext) {
+                setStatus(pushStatus, 'Push-уведомления требуют защищенного соединения (HTTPS). На локальном адресе (localhost/127.0.0.1) они могут работать, но на других IP-адресах — нет.', true);
                 return;
             }
+            if (!('serviceWorker' in navigator)) {
+                setStatus(pushStatus, 'Service Worker не поддерживается. Для iPhone используйте “Добавить на экран Домой”.', true);
+                return;
+            }
+
+            // Ensure SW is ready
+            var reg;
+            try {
+                reg = await navigator.serviceWorker.ready;
+                if (!reg) {
+                    // Try to register if not found
+                    reg = await navigator.serviceWorker.register('/sw.js');
+                }
+            } catch (e) {
+                setStatus(pushStatus, 'Не удалось активировать Service Worker: ' + e.message, true);
+                return;
+            }
+
             if (!('PushManager' in window)) {
                 setStatus(pushStatus, 'Web Push не поддерживается в этом браузере.', true);
                 return;
@@ -196,7 +329,6 @@
                 return;
             }
 
-            var reg = await navigator.serviceWorker.ready;
             var keyResp = await fetch('{{ url_for("webpush_public_key") }}', { credentials: 'include' });
             if (!keyResp.ok) {
                 setStatus(pushStatus, 'Не удалось получить ключ уведомлений.', true);
@@ -237,60 +369,79 @@
                 setStatus(passkeyStatus, 'Не найден токен бронирования.', true);
                 return;
             }
+            if (isIp && hostname !== '127.0.0.1') {
+                setStatus(passkeyStatus, 'Passkey требует доменного имени (например, imperial-collection.ru). IP-адреса не поддерживаются.', true);
+                return;
+            }
+            if (!window.isSecureContext) {
+                setStatus(passkeyStatus, 'Passkey требует защищенного соединения (HTTPS). На локальном адресе (localhost/127.0.0.1) он может работать, но на других IP-адресах — нет.', true);
+                return;
+            }
             if (!window.PublicKeyCredential || !navigator.credentials) {
-                setStatus(passkeyStatus, 'Passkey не поддерживается в этом браузере.', true);
+                setStatus(passkeyStatus, 'Passkey не поддерживается в этом браузере или на этом устройстве.', true);
                 return;
             }
 
-            var optResp = await fetch('{{ url_for("webauthn_registration_options") }}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ booking_token: bookingToken })
-            });
-
-            var optJson = await optResp.json().catch(function() { return null; });
-            if (!optResp.ok || !optJson) {
-                setStatus(passkeyStatus, 'Не удалось получить параметры Passkey.', true);
-                return;
-            }
-
-            optJson.challenge = base64UrlToBuffer(optJson.challenge);
-            optJson.user.id = base64UrlToBuffer(optJson.user.id);
-            if (optJson.excludeCredentials) {
-                optJson.excludeCredentials = optJson.excludeCredentials.map(function(c) {
-                    c.id = base64UrlToBuffer(c.id);
-                    return c;
+            try {
+                var optResp = await fetch('{{ url_for("webauthn_registration_options") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ booking_token: bookingToken })
                 });
-            }
 
-            var cred = await navigator.credentials.create({ publicKey: optJson });
-            var att = cred.response;
-
-            var payload = {
-                booking_token: bookingToken,
-                id: cred.id,
-                rawId: bufferToBase64Url(cred.rawId),
-                type: cred.type,
-                response: {
-                    clientDataJSON: bufferToBase64Url(att.clientDataJSON),
-                    attestationObject: bufferToBase64Url(att.attestationObject)
+                var optJson = await optResp.json().catch(function() { return null; });
+                if (!optResp.ok || !optJson) {
+                    setStatus(passkeyStatus, 'Не удалось получить параметры Passkey.', true);
+                    return;
                 }
-            };
 
-            var verResp = await fetch('{{ url_for("webauthn_registration_verify") }}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify(payload)
-            });
-            var verJson = await verResp.json().catch(function() { return null; });
-            if (!verResp.ok || !verJson || verJson.status !== 'ok') {
-                setStatus(passkeyStatus, (verJson && verJson.error) ? verJson.error : 'Не удалось сохранить Passkey.', true);
-                return;
+                optJson.challenge = base64UrlToBuffer(optJson.challenge);
+                optJson.user.id = base64UrlToBuffer(optJson.user.id);
+                if (optJson.excludeCredentials) {
+                    optJson.excludeCredentials = optJson.excludeCredentials.map(function(c) {
+                        c.id = base64UrlToBuffer(c.id);
+                        return c;
+                    });
+                }
+
+                var cred = await navigator.credentials.create({ publicKey: optJson });
+                var att = cred.response;
+
+                var payload = {
+                    booking_token: bookingToken,
+                    id: cred.id,
+                    rawId: bufferToBase64Url(cred.rawId),
+                    type: cred.type,
+                    response: {
+                        clientDataJSON: bufferToBase64Url(att.clientDataJSON),
+                        attestationObject: bufferToBase64Url(att.attestationObject)
+                    }
+                };
+
+                var verResp = await fetch('{{ url_for("webauthn_registration_verify") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+                var verJson = await verResp.json().catch(function() { return null; });
+                if (!verResp.ok || !verJson || verJson.status !== 'ok') {
+                    setStatus(passkeyStatus, (verJson && verJson.error) ? verJson.error : 'Не удалось сохранить Passkey.', true);
+                    return;
+                }
+
+                setStatus(passkeyStatus, 'Passkey привязан.', false);
+            } catch (e) {
+                console.error(e);
+                if (e.name === 'NotAllowedError') {
+                    setStatus(passkeyStatus, 'Операция отменена пользователем или заблокирована браузером (например, из-за IP-адреса).', true);
+                } else if (e.name === 'SecurityError') {
+                    setStatus(passkeyStatus, 'Ошибка безопасности. Убедитесь, что используете HTTPS и доменное имя.', true);
+                } else {
+                    setStatus(passkeyStatus, 'Ошибка: ' + (e.message || 'попробуйте позже.'), true);
+                }
             }
-
-            setStatus(passkeyStatus, 'Passkey привязан.', false);
         }
 
         async function verifyPasskey() {
@@ -366,35 +517,60 @@
 
         if (cancelBtn) {
             cancelBtn.addEventListener('click', async function() {
-                if (!confirm('Вы действительно хотите отменить бронирование?')) return;
+                if (!confirm('Вы уверены, что хотите отменить это бронирование?')) return;
                 
-                setStatus(cancelStatus, 'Проверка Passkey...', false);
+                cancelBtn.disabled = true;
+                setStatus(cancelStatus, 'Обработка...', false);
+                
                 try {
-                    // Try to verify with Passkey if it exists
-                    await verifyPasskey();
-                    
-                    setStatus(cancelStatus, 'Отменяю...', false);
-                    var resp = await fetch('{{ url_for("api_booking_cancel") }}', {
+                    // 1. Check if Passkey is registered for this booking
+                    var optCheck = await fetch('{{ url_for("webauthn_authentication_options") }}', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
                         body: JSON.stringify({ booking_token: bookingToken })
                     });
                     
-                    var json = await resp.json();
-                    if (resp.ok && json.status === 'ok') {
+                    var needsPasskey = false;
+                    if (optCheck.ok) {
+                        var optJson = await optCheck.json();
+                        if (optJson && optJson.allowCredentials && optJson.allowCredentials.length > 0) {
+                            needsPasskey = true;
+                        }
+                    }
+                    
+                    if (needsPasskey) {
+                        try {
+                            await verifyPasskey();
+                        } catch (e) {
+                            console.error('Passkey verification failed:', e);
+                            setStatus(cancelStatus, 'Для отмены требуется подтверждение Passkey.', true);
+                            cancelBtn.disabled = false;
+                            return;
+                        }
+                    }
+
+                    // 2. Perform cancellation
+                    var resp = await fetch('{{ url_for("api_booking_cancel") }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ booking_token: bookingToken })
+                    });
+                    
+                    var res = await resp.json().catch(function() { return null; });
+                    if (resp.ok && res && res.status === 'ok') {
+                        setStatus(cancelStatus, 'Бронирование отменено.', false);
                         cancelSection.classList.add('d-none');
                         cancelledBadge.classList.remove('d-none');
-                        setStatus(cancelStatus, 'Бронирование отменено.', false);
                     } else {
-                        throw new Error(json.error || 'Не удалось отменить.');
+                        setStatus(cancelStatus, (res && res.error) ? res.error : 'Ошибка при отмене.', true);
+                        cancelBtn.disabled = false;
                     }
                 } catch (e) {
-                    console.error(e);
-                    if (e.name === 'NotAllowedError') {
-                        setStatus(cancelStatus, 'Отмена прервана пользователем.', true);
-                    } else {
-                        setStatus(cancelStatus, 'Ошибка: ' + (e.message || 'Попробуйте позже.'), true);
-                    }
+                    console.error('Cancellation error:', e);
+                    setStatus(cancelStatus, 'Ошибка связи с сервером.', true);
+                    cancelBtn.disabled = false;
                 }
             });
         }

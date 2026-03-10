@@ -1,11 +1,14 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Базовая директория приложения (где лежит config.py)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Загружаем .env из базовой директории
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 class Config:
-    # Базовая директория приложения (где лежит config.py)
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = BASE_DIR
     
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key'
     

@@ -412,6 +412,9 @@ def get_busy_dates(property_id):
 @app.route('/api/webpush/public-key')
 def webpush_public_key():
     public_key = app.config.get('VAPID_PUBLIC_KEY')
+    if not public_key:
+        # Check if it's in environment directly (in case of dynamic loading)
+        public_key = os.environ.get('VAPID_PUBLIC_KEY')
     return jsonify({'public_key': public_key})
 
 @app.route('/api/webpush/subscribe', methods=['POST'])
