@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, Response
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from datetime import datetime, timedelta
@@ -7,6 +7,9 @@ import calendar
 from config import Config
 import json
 import os
+import base64
+import hashlib
+import secrets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -69,6 +72,20 @@ def allowed_video_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
 
 import threading
+from pywebpush import webpush, WebPushException
+
+def _b64url_encode(data):
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode('ascii')
+
+def _b64url_decode(data):
+    padding = '=' * (-len(data) % 4)
+    return base64.urlsafe_b64decode((data + padding).encode('ascii'))
+
+def _generate_token(nbytes=32):
+    return _b64url_encode(secrets.token_bytes(nbytes))
+
+def _sha256_hex(value):
+    return hashlib.sha256(value.encode('utf-8')).hexdigest()
 
 def send_email_notification(subject, html_body, recipient=None):
     try:
@@ -181,6 +198,74 @@ def send_telegram_notification(chat_id, message):
     except Exception as e:
         print(f"Error sending Telegram notification: {e}")
         return False
+
+def send_webpush_notification(subscription_info, data):
+    """
+    Sends a Web Push notification to a single subscriber.
+    subscription_info: dict with 'endpoint', 'keys' (p256dh, auth)
+    data: string or dict to be sent as payload
+    """
+    try:
+        # Load VAPID keys from config
+        vapid_private = app.config.get('VAPID_PRIVATE_KEY')
+        vapid_claims = {
+            "sub": "mailto:" + app.config.get('VAPID_CLAIM_EMAIL', 'admin@imperial-collection.ru')
+        }
+
+        if not vapid_private:
+            print("VAPID_PRIVATE_KEY not configured")
+            return False
+
+        if isinstance(data, dict):
+            payload = json.dumps(data)
+        else:
+            payload = str(data)
+
+        webpush(
+            subscription_info=subscription_info,
+            data=payload,
+            vapid_private_key=vapid_private,
+            vapid_claims=vapid_claims
+        )
+        return True
+    except WebPushException as ex:
+        print(f"WebPush Error: {ex}")
+        # If 410 Gone, the subscription is no longer valid
+        if ex.response and ex.response.status_code == 410:
+            return "gone"
+        return False
+    except Exception as e:
+        print(f"Error in send_webpush_notification: {e}")
+        return False
+
+def notify_booking_devices(booking_id, title, body, icon='/static/icons/icon-192x192.png', url=None):
+    """
+    Sends a notification to all active devices linked to a booking.
+    """
+    with app.app_context():
+        devices = BookingDevice.query.filter_by(booking_id=booking_id, is_active=True).all()
+        results = []
+        for device in devices:
+            sub_info = {
+                'endpoint': device.endpoint,
+                'keys': {
+                    'p256dh': device.p256dh,
+                    'auth': device.auth
+                }
+            }
+            payload = {
+                'title': title,
+                'body': body,
+                'icon': icon,
+                'url': url or url_for('booking_success', booking_token=device.booking.booking_token, _external=True)
+            }
+            
+            res = send_webpush_notification(sub_info, payload)
+            if res == "gone":
+                device.is_active = False
+                db.session.commit()
+            results.append(res)
+        return results
 
 # Добавляем фильтры для Jinja2
 @app.template_filter('from_json')
@@ -320,8 +405,37 @@ class Booking(db.Model):
     total_price = db.Column(db.Float, nullable=False)
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    booking_token = db.Column(db.String(64), unique=True, index=True)
     
     property = db.relationship('Property', backref=db.backref('bookings', lazy=True, cascade="all, delete-orphan"))
+
+class BookingDevice(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    booking_id = db.Column(db.Integer, db.ForeignKey('booking.id'), nullable=False, index=True)
+    channel = db.Column(db.String(20), nullable=False, default='webpush')
+    endpoint = db.Column(db.Text, nullable=False, unique=True)
+    p256dh = db.Column(db.String(200), nullable=False)
+    auth = db.Column(db.String(200), nullable=False)
+    device_token_hash = db.Column(db.String(64), nullable=False, index=True)
+    user_agent = db.Column(db.String(400))
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime)
+
+    booking = db.relationship('Booking', backref=db.backref('devices', lazy=True, cascade="all, delete-orphan"))
+
+class BookingPasskey(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    booking_id = db.Column(db.Integer, db.ForeignKey('booking.id'), nullable=False, index=True)
+    credential_id = db.Column(db.String(300), nullable=False, unique=True, index=True)
+    public_key = db.Column(db.LargeBinary, nullable=False)
+    sign_count = db.Column(db.Integer, nullable=False, default=0)
+    transports = db.Column(db.String(200))
+    aaguid = db.Column(db.String(64))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_used_at = db.Column(db.DateTime)
+
+    booking = db.relationship('Booking', backref=db.backref('passkeys', lazy=True, cascade="all, delete-orphan"))
 
 class BookingOption(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -451,6 +565,10 @@ def index():
     
     return render_template('index.html', properties=properties, reviews=reviews, map_properties=map_properties)
 
+@app.route('/sw.js')
+def sw_js():
+    return send_from_directory('static', 'sw.js', mimetype='application/javascript')
+
 @app.route('/property/<int:id>')
 def property_detail(id):
     property = Property.query.get_or_404(id)
@@ -473,6 +591,268 @@ def get_busy_dates(property_id):
         })
         
     return jsonify(busy_dates)
+
+@app.route('/api/webpush/public-key')
+def webpush_public_key():
+    public_key = app.config.get('VAPID_PUBLIC_KEY')
+    return jsonify({'public_key': public_key})
+
+@app.route('/api/webpush/subscribe', methods=['POST'])
+def webpush_subscribe():
+    payload = request.get_json(silent=True) or {}
+    booking_token = (payload.get('booking_token') or '').strip()
+    subscription = payload.get('subscription') or {}
+
+    if not booking_token:
+        return jsonify({'status': 'error', 'error': 'Не указан booking_token'}), 400
+
+    booking = Booking.query.filter_by(booking_token=booking_token).first()
+    if not booking:
+        return jsonify({'status': 'error', 'error': 'Бронирование не найдено'}), 404
+
+    endpoint = subscription.get('endpoint')
+    keys = subscription.get('keys') or {}
+    p256dh = keys.get('p256dh')
+    auth = keys.get('auth')
+
+    if not endpoint or not p256dh or not auth:
+        return jsonify({'status': 'error', 'error': 'Некорректная подписка'}), 400
+
+    device = BookingDevice.query.filter_by(endpoint=endpoint).first()
+    device_token = _generate_token()
+    device_token_hash = _sha256_hex(device_token)
+
+    if device:
+        device.booking_id = booking.id
+        device.p256dh = p256dh
+        device.auth = auth
+        device.device_token_hash = device_token_hash
+        device.user_agent = request.headers.get('User-Agent')
+        device.is_active = True
+        device.last_seen = datetime.utcnow()
+    else:
+        device = BookingDevice(
+            booking_id=booking.id,
+            channel='webpush',
+            endpoint=endpoint,
+            p256dh=p256dh,
+            auth=auth,
+            device_token_hash=device_token_hash,
+            user_agent=request.headers.get('User-Agent'),
+            is_active=True,
+            last_seen=datetime.utcnow()
+        )
+        db.session.add(device)
+
+    db.session.commit()
+
+    return jsonify({'status': 'ok'})
+
+def _webauthn_rp_id():
+    return os.environ.get('WEBAUTHN_RP_ID') or request.host.split(':')[0]
+
+def _webauthn_origin():
+    return os.environ.get('WEBAUTHN_ORIGIN') or request.host_url.rstrip('/')
+
+def _webauthn_rp_name():
+    settings = SiteSettings.query.first()
+    return settings.site_name if settings and settings.site_name else 'Imperial Collection'
+
+@app.route('/api/webauthn/registration/options', methods=['POST'])
+def webauthn_registration_options():
+    try:
+        from webauthn import generate_registration_options, options_to_json
+        from webauthn.helpers.structs import AuthenticatorSelectionCriteria, UserVerificationRequirement
+    except Exception:
+        return jsonify({'error': 'WebAuthn не настроен на сервере'}), 500
+
+    payload = request.get_json(silent=True) or {}
+    booking_token = (payload.get('booking_token') or '').strip()
+    if not booking_token:
+        return jsonify({'error': 'Не указан booking_token'}), 400
+
+    booking = Booking.query.filter_by(booking_token=booking_token).first()
+    if not booking:
+        return jsonify({'error': 'Бронирование не найдено'}), 404
+
+    existing = BookingPasskey.query.filter_by(booking_id=booking.id).all()
+    exclude = []
+    for pk in existing:
+        exclude.append({"id": pk.credential_id, "type": "public-key"})
+
+    options = generate_registration_options(
+        rp_id=_webauthn_rp_id(),
+        rp_name=_webauthn_rp_name(),
+        user_id=booking_token.encode('utf-8'),
+        user_name=f"booking-{booking.id}",
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            user_verification=UserVerificationRequirement.REQUIRED,
+        ),
+        exclude_credentials=exclude if exclude else None,
+    )
+
+    options_dict = json.loads(options_to_json(options))
+    session[f'webauthn_reg_chal_{booking.id}'] = options_dict.get('challenge')
+    return jsonify(options_dict)
+
+@app.route('/api/webauthn/registration/verify', methods=['POST'])
+def webauthn_registration_verify():
+    try:
+        from webauthn import verify_registration_response, base64url_to_bytes
+        from webauthn.helpers.structs import RegistrationCredential
+    except Exception:
+        return jsonify({'status': 'error', 'error': 'WebAuthn не настроен на сервере'}), 500
+
+    payload = request.get_json(silent=True) or {}
+    booking_token = (payload.get('booking_token') or '').strip()
+    if not booking_token:
+        return jsonify({'status': 'error', 'error': 'Не указан booking_token'}), 400
+
+    booking = Booking.query.filter_by(booking_token=booking_token).first()
+    if not booking:
+        return jsonify({'status': 'error', 'error': 'Бронирование не найдено'}), 404
+
+    challenge_b64 = session.get(f'webauthn_reg_chal_{booking.id}')
+    if not challenge_b64:
+        return jsonify({'status': 'error', 'error': 'Сессия регистрации истекла'}), 400
+
+    try:
+        credential = RegistrationCredential.parse_raw(json.dumps(payload, ensure_ascii=False))
+        verification = verify_registration_response(
+            credential=credential,
+            expected_challenge=base64url_to_bytes(challenge_b64),
+            expected_rp_id=_webauthn_rp_id(),
+            expected_origin=_webauthn_origin(),
+            require_user_verification=True,
+        )
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 400
+
+    credential_id = _b64url_encode(verification.credential_id)
+    public_key = verification.credential_public_key
+    sign_count = int(getattr(verification, 'sign_count', 0) or 0)
+
+    exists = BookingPasskey.query.filter_by(credential_id=credential_id).first()
+    if exists:
+        exists.booking_id = booking.id
+        exists.public_key = public_key
+        exists.sign_count = sign_count
+        exists.last_used_at = datetime.utcnow()
+    else:
+        db.session.add(BookingPasskey(
+            booking_id=booking.id,
+            credential_id=credential_id,
+            public_key=public_key,
+            sign_count=sign_count,
+            last_used_at=datetime.utcnow()
+        ))
+
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/webauthn/authentication/options', methods=['POST'])
+def webauthn_authentication_options():
+    try:
+        from webauthn import generate_authentication_options, options_to_json
+    except Exception:
+        return jsonify({'error': 'WebAuthn не настроен на сервере'}), 500
+
+    payload = request.get_json(silent=True) or {}
+    booking_token = (payload.get('booking_token') or '').strip()
+    if not booking_token:
+        return jsonify({'error': 'Не указан booking_token'}), 400
+
+    booking = Booking.query.filter_by(booking_token=booking_token).first()
+    if not booking:
+        return jsonify({'error': 'Бронирование не найдено'}), 404
+
+    existing = BookingPasskey.query.filter_by(booking_id=booking.id).all()
+    if not existing:
+        return jsonify({'error': 'Passkey не зарегистрирован'}), 400
+
+    allow_credentials = []
+    for pk in existing:
+        allow_credentials.append({"id": pk.credential_id, "type": "public-key"})
+
+    options = generate_authentication_options(
+        rp_id=_webauthn_rp_id(),
+        allow_credentials=allow_credentials,
+    )
+
+    options_dict = json.loads(options_to_json(options))
+    session[f'webauthn_auth_chal_{booking.id}'] = options_dict.get('challenge')
+    return jsonify(options_dict)
+
+@app.route('/api/webauthn/authentication/verify', methods=['POST'])
+def webauthn_authentication_verify():
+    try:
+        from webauthn import verify_authentication_response, base64url_to_bytes
+        from webauthn.helpers.structs import AuthenticationCredential
+    except Exception:
+        return jsonify({'status': 'error', 'error': 'WebAuthn не настроен на сервере'}), 500
+
+    payload = request.get_json(silent=True) or {}
+    booking_token = (payload.get('booking_token') or '').strip()
+    if not booking_token:
+        return jsonify({'status': 'error', 'error': 'Не указан booking_token'}), 400
+
+    booking = Booking.query.filter_by(booking_token=booking_token).first()
+    if not booking:
+        return jsonify({'status': 'error', 'error': 'Бронирование не найдено'}), 404
+
+    challenge_b64 = session.get(f'webauthn_auth_chal_{booking.id}')
+    if not challenge_b64:
+        return jsonify({'status': 'error', 'error': 'Сессия аутентификации истекла'}), 400
+
+    credential_id = payload.get('id')
+    passkey = BookingPasskey.query.filter_by(credential_id=credential_id, booking_id=booking.id).first()
+    if not passkey:
+        return jsonify({'status': 'error', 'error': 'Passkey не найден'}), 404
+
+    try:
+        credential = AuthenticationCredential.parse_raw(json.dumps(payload, ensure_ascii=False))
+        verification = verify_authentication_response(
+            credential=credential,
+            expected_challenge=base64url_to_bytes(challenge_b64),
+            expected_rp_id=_webauthn_rp_id(),
+            expected_origin=_webauthn_origin(),
+            credential_public_key=passkey.public_key,
+            credential_current_sign_count=passkey.sign_count,
+            require_user_verification=True,
+        )
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': str(e)}), 400
+
+    passkey.sign_count = verification.new_sign_count
+    passkey.last_used_at = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/booking/cancel', methods=['POST'])
+def api_booking_cancel():
+    payload = request.get_json(silent=True) or {}
+    booking_token = (payload.get('booking_token') or '').strip()
+    
+    if not booking_token:
+        return jsonify({'status': 'error', 'error': 'Не указан токен'}), 400
+        
+    booking = Booking.query.filter_by(booking_token=booking_token).first()
+    if not booking:
+        return jsonify({'status': 'error', 'error': 'Бронирование не найдено'}), 404
+        
+    if booking.status == 'cancelled':
+        return jsonify({'status': 'ok', 'message': 'Бронирование уже отменено'})
+        
+    booking.status = 'cancelled'
+    db.session.commit()
+    
+    # Notify admin via Telegram if available
+    if booking.property.telegram_chat_id:
+        msg = f"❌ <b>Бронирование #{booking.id} ОТМЕНЕНО гостем</b>\nОбъект: {booking.property.name}\nГость: {booking.guest_name}"
+        threading.Thread(target=send_telegram_notification, args=(booking.property.telegram_chat_id, msg)).start()
+        
+    return jsonify({'status': 'ok', 'message': 'Бронирование успешно отменено'})
 
 def generate_math_captcha():
     """Generates a simple math problem."""
@@ -634,7 +1014,8 @@ def booking(property_id):
                 guests_count=guests_count,
                 special_requests=request.form.get('special_requests', ''),
                 total_price=total_price,
-                status='pending'
+                status='pending',
+                booking_token=_generate_token()
             )
             db.session.add(booking)
             db.session.flush()
@@ -721,10 +1102,15 @@ def booking(property_id):
                 
             msg = 'Бронирование успешно создано! Ожидайте подтверждения.'
             if is_ajax:
-                return jsonify({'status': 'success', 'message': msg})
+                return jsonify({
+                    'status': 'success',
+                    'message': msg,
+                    'booking_token': booking.booking_token,
+                    'success_url': url_for('booking_success', booking_token=booking.booking_token)
+                })
                 
             flash(msg, 'success')
-            return redirect(url_for('index'))
+            return redirect(url_for('booking_success', booking_token=booking.booking_token))
             
         except ValueError:
             msg = 'Неверный формат даты'
@@ -738,6 +1124,35 @@ def booking(property_id):
             return redirect(url_for('booking', property_id=property_id))
             
     return render_template('booking.html', property=property, captcha_question=captcha_question, property_options=property_options)
+
+@app.route('/booking/success/<booking_token>', endpoint='booking_success')
+def booking_success(booking_token):
+    booking = Booking.query.filter_by(booking_token=booking_token).first_or_404()
+    return render_template('booking_success.html', booking=booking)
+
+@app.route('/manifest.webmanifest')
+def manifest_webmanifest():
+    return jsonify({
+        "name": "Imperial Collection",
+        "short_name": "Imperial",
+        "description": "Три грани настоящего отдыха в Псковской области",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0b0b0b",
+        "theme_color": "#0b0b0b",
+        "icons": [
+            {
+                "src": "/static/icons/icon-192x192.png",
+                "sizes": "192x192",
+                "type": "image/png"
+            },
+            {
+                "src": "/static/icons/icon-512x512.png",
+                "sizes": "512x512",
+                "type": "image/png"
+            }
+        ]
+    }), 200, {'Content-Type': 'application/manifest+json'}
 
 @app.route('/contact', methods=['GET', 'POST'])
 def contact():
@@ -1407,7 +1822,26 @@ def admin_booking_edit(booking_id):
             booking.guests_count = int(request.form['guests_count'])
             booking.special_requests = request.form.get('special_requests', '')
             booking.total_price = float(request.form['total_price'])
+            old_status = booking.status
             booking.status = request.form['status']
+            
+            # Ensure booking token exists
+            if not booking.booking_token:
+                booking.booking_token = _generate_token()
+            
+            # Send notification if status changed
+            if old_status != booking.status:
+                status_texts = {
+                    'confirmed': 'Ваше бронирование подтверждено! 🎉',
+                    'cancelled': 'Ваше бронирование было отменено.',
+                    'completed': 'Надеемся, вам понравилось пребывание! Будем рады отзыву.',
+                    'pending': 'Статус вашего бронирования изменен на "Ожидание".'
+                }
+                msg = status_texts.get(booking.status, f'Статус вашего бронирования изменен на: {booking.status}')
+                
+                # Notify in background
+                threading.Thread(target=notify_booking_devices, 
+                               args=(booking.id, 'Imperial Collection', msg)).start()
             
             db.session.commit()
             flash('Бронирование обновлено', 'success')
@@ -1417,6 +1851,19 @@ def admin_booking_edit(booking_id):
 
     properties = Property.query.order_by(Property.name).all()
     return render_template('admin/edit_booking.html', booking=booking, properties=properties)
+
+@app.route('/admin/bookings/send-push/<int:booking_id>', methods=['POST'])
+@login_required
+def admin_booking_send_push(booking_id):
+    booking = Booking.query.get_or_404(booking_id)
+    title = request.form.get('title', 'Imperial Collection')
+    message = request.form.get('message', 'Тестовое уведомление')
+    
+    # Run in background
+    threading.Thread(target=notify_booking_devices, args=(booking.id, title, message)).start()
+    
+    flash('Запрос на отправку уведомления отправлен', 'success')
+    return redirect(url_for('admin_booking_edit', booking_id=booking.id))
 
 @app.route('/admin/bookings/delete/<int:booking_id>', methods=['POST'])
 @login_required

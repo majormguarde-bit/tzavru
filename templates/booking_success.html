@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+
+{% block title %}Бронирование создано{% endblock %}
+
+{% block content %}
+<section class="py-5" style="margin-top: 80px;">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-lg-8">
+                <div class="card bg-dark border-secondary mb-4">
+                    <div class="card-body p-4">
+                        <h1 class="h4 mb-3">Бронирование создано</h1>
+                        <div class="text-muted mb-4">Сохраните привязку устройства, чтобы получать уведомления и подтверждать действия без звонков.</div>
+
+                        <div class="row g-3">
+                            <div class="col-12 col-md-6">
+                                <div class="border border-secondary rounded p-3 h-100">
+                                    <div class="fw-semibold mb-2">Passkey (биометрия)</div>
+                                    <div class="text-muted small mb-3">Привязывает это устройство к бронированию. В следующий раз вход — по Face ID/Touch ID.</div>
+                                    <button id="btn-passkey" class="btn btn-outline-light w-100" type="button">Привязать Passkey</button>
+                                    <div id="passkey-status" class="small text-muted mt-2"></div>
+                                </div>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <div class="border border-secondary rounded p-3 h-100">
+                                    <div class="fw-semibold mb-2">Уведомления</div>
+                                    <div class="text-muted small mb-3">Приходят бесплатно через Web Push. На iPhone требуется “Добавить на экран”.</div>
+                                    <button id="btn-push" class="btn btn-outline-light w-100" type="button">Включить уведомления</button>
+                                    <div id="push-status" class="small text-muted mt-2"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="border-secondary my-4">
+
+                        <div class="text-muted small">
+                            <div class="mb-1"><span class="text-light">Объект:</span> {{ booking.property.name }}</div>
+                            <div class="mb-1"><span class="text-light">Даты:</span> {{ booking.check_in.strftime('%d.%m.%Y') }} – {{ booking.check_out.strftime('%d.%m.%Y') }}</div>
+                            <div class="mb-1"><span class="text-light">Гостей:</span> {{ booking.guests_count }}</div>
+                            <div class="mb-1"><span class="text-light">Сумма:</span> {{ "{:,.0f}".format(booking.total_price) }} ₽</div>
+                            <div class="mb-0"><span class="text-light">Номер брони:</span> #{{ booking.id }}</div>
+                        </div>
+
+                        <div id="a2hs-hint" class="alert alert-secondary mt-4 d-none" role="alert">
+                            Для iPhone: нажмите “Поделиться” → “На экран Домой”, затем откройте сайт с иконки и включите уведомления.
+                        </div>
+
+                        <div id="cancel-section" class="mt-4 pt-3 border-top {{ 'd-none' if booking.status == 'cancelled' }}">
+                            <button id="btn-cancel" class="btn btn-outline-danger btn-sm w-100">
+                                <i class="bi bi-x-circle me-1"></i> Отменить бронирование
+                            </button>
+                            <div id="cancel-status" class="small text-muted mt-1 text-center"></div>
+                        </div>
+
+                        <div id="cancelled-badge" class="alert alert-danger mt-4 {{ 'd-none' if booking.status != 'cancelled' }}" role="alert">
+                            <i class="bi bi-x-circle me-2"></i> Бронирование отменено.
+                        </div>
+                    </div>
+                </div>
+
+                <a class="btn btn-primary w-100" href="{{ url_for('index') }}">Вернуться на главную</a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (function() {
+        var bookingToken = "{{ booking.booking_token }}";
+        var pushBtn = document.getElementById('btn-push');
+        var pushStatus = document.getElementById('push-status');
+        var passkeyBtn = document.getElementById('btn-passkey');
+        var passkeyStatus = document.getElementById('passkey-status');
+        var cancelBtn = document.getElementById('btn-cancel');
+        var cancelStatus = document.getElementById('cancel-status');
+        var cancelSection = document.getElementById('cancel-section');
+        var cancelledBadge = document.getElementById('cancelled-badge');
+
+        function setStatus(el, msg, isError) {
+            el.textContent = msg || '';
+            el.classList.toggle('text-danger', !!isError);
+            el.classList.toggle('text-muted', !isError);
+        }
+
+        function isIos() {
+            return /iphone|ipad|ipod/i.test(navigator.userAgent);
+        }
+
+        function isStandalone() {
+            return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        }
+
+        if (isIos() && !isStandalone()) {
+            var hint = document.getElementById('a2hs-hint');
+            if (hint) hint.classList.remove('d-none');
+        }
+
+        function urlBase64ToUint8Array(base64String) {
+            var padding = '='.repeat((4 - base64String.length % 4) % 4);
+            var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            var rawData = window.atob(base64);
+            var outputArray = new Uint8Array(rawData.length);
+            for (var i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        function bufferToBase64Url(buffer) {
+            var bytes = new Uint8Array(buffer);
+            var binary = '';
+            for (var i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            var base64 = window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+            return base64;
+        }
+
+        function base64UrlToBuffer(base64url) {
+            var padding = '='.repeat((4 - base64url.length % 4) % 4);
+            var base64 = (base64url + padding).replace(/-/g, '+').replace(/_/g, '/');
+            var raw = window.atob(base64);
+            var buffer = new ArrayBuffer(raw.length);
+            var bytes = new Uint8Array(buffer);
+            for (var i = 0; i < raw.length; i++) {
+                bytes[i] = raw.charCodeAt(i);
+            }
+            return buffer;
+        }
+
+        async function enablePush() {
+            if (!('serviceWorker' in navigator)) {
+                setStatus(pushStatus, 'Service Worker не поддерживается в этом браузере.', true);
+                return;
+            }
+            if (!('PushManager' in window)) {
+                setStatus(pushStatus, 'Web Push не поддерживается в этом браузере.', true);
+                return;
+            }
+            if (!bookingToken) {
+                setStatus(pushStatus, 'Не найден токен бронирования.', true);
+                return;
+            }
+
+            var permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                setStatus(pushStatus, 'Разрешение на уведомления не выдано.', true);
+                return;
+            }
+
+            var reg = await navigator.serviceWorker.ready;
+            var keyResp = await fetch('{{ url_for("webpush_public_key") }}', { credentials: 'include' });
+            if (!keyResp.ok) {
+                setStatus(pushStatus, 'Не удалось получить ключ уведомлений.', true);
+                return;
+            }
+            var keyJson = await keyResp.json();
+            if (!keyJson || !keyJson.public_key) {
+                setStatus(pushStatus, 'Ключ уведомлений не настроен на сервере.', true);
+                return;
+            }
+
+            var sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(keyJson.public_key)
+            });
+
+            var saveResp = await fetch('{{ url_for("webpush_subscribe") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    booking_token: bookingToken,
+                    subscription: sub.toJSON()
+                })
+            });
+
+            var saveJson = await saveResp.json().catch(function() { return null; });
+            if (!saveResp.ok || !saveJson || saveJson.status !== 'ok') {
+                setStatus(pushStatus, (saveJson && saveJson.error) ? saveJson.error : 'Не удалось сохранить подписку.', true);
+                return;
+            }
+
+            setStatus(pushStatus, 'Уведомления включены.', false);
+        }
+
+        async function registerPasskey() {
+            if (!bookingToken) {
+                setStatus(passkeyStatus, 'Не найден токен бронирования.', true);
+                return;
+            }
+            if (!window.PublicKeyCredential || !navigator.credentials) {
+                setStatus(passkeyStatus, 'Passkey не поддерживается в этом браузере.', true);
+                return;
+            }
+
+            var optResp = await fetch('{{ url_for("webauthn_registration_options") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ booking_token: bookingToken })
+            });
+
+            var optJson = await optResp.json().catch(function() { return null; });
+            if (!optResp.ok || !optJson) {
+                setStatus(passkeyStatus, 'Не удалось получить параметры Passkey.', true);
+                return;
+            }
+
+            optJson.challenge = base64UrlToBuffer(optJson.challenge);
+            optJson.user.id = base64UrlToBuffer(optJson.user.id);
+            if (optJson.excludeCredentials) {
+                optJson.excludeCredentials = optJson.excludeCredentials.map(function(c) {
+                    c.id = base64UrlToBuffer(c.id);
+                    return c;
+                });
+            }
+
+            var cred = await navigator.credentials.create({ publicKey: optJson });
+            var att = cred.response;
+
+            var payload = {
+                booking_token: bookingToken,
+                id: cred.id,
+                rawId: bufferToBase64Url(cred.rawId),
+                type: cred.type,
+                response: {
+                    clientDataJSON: bufferToBase64Url(att.clientDataJSON),
+                    attestationObject: bufferToBase64Url(att.attestationObject)
+                }
+            };
+
+            var verResp = await fetch('{{ url_for("webauthn_registration_verify") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+            var verJson = await verResp.json().catch(function() { return null; });
+            if (!verResp.ok || !verJson || verJson.status !== 'ok') {
+                setStatus(passkeyStatus, (verJson && verJson.error) ? verJson.error : 'Не удалось сохранить Passkey.', true);
+                return;
+            }
+
+            setStatus(passkeyStatus, 'Passkey привязан.', false);
+        }
+
+        async function verifyPasskey() {
+            if (!bookingToken) throw new Error('Не найден токен бронирования.');
+            
+            var optResp = await fetch('{{ url_for("webauthn_authentication_options") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ booking_token: bookingToken })
+            });
+
+            var optJson = await optResp.json().catch(function() { return null; });
+            if (!optResp.ok || !optJson) {
+                throw new Error(optJson && optJson.error ? optJson.error : 'Не удалось получить параметры проверки.');
+            }
+
+            optJson.challenge = base64UrlToBuffer(optJson.challenge);
+            if (optJson.allowCredentials) {
+                optJson.allowCredentials = optJson.allowCredentials.map(function(c) {
+                    c.id = base64UrlToBuffer(c.id);
+                    return c;
+                });
+            }
+
+            var cred = await navigator.credentials.get({ publicKey: optJson });
+            var auth = cred.response;
+
+            var payload = {
+                booking_token: bookingToken,
+                id: cred.id,
+                rawId: bufferToBase64Url(cred.rawId),
+                type: cred.type,
+                response: {
+                    authenticatorData: bufferToBase64Url(auth.authenticatorData),
+                    clientDataJSON: bufferToBase64Url(auth.clientDataJSON),
+                    signature: bufferToBase64Url(auth.signature),
+                    userHandle: auth.userHandle ? bufferToBase64Url(auth.userHandle) : null
+                }
+            };
+
+            var verResp = await fetch('{{ url_for("webauthn_authentication_verify") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+            
+            var verJson = await verResp.json().catch(function() { return null; });
+            if (!verResp.ok || !verJson || verJson.status !== 'ok') {
+                throw new Error(verJson && verJson.error ? verJson.error : 'Ошибка проверки Passkey.');
+            }
+            return true;
+        }
+
+        if (pushBtn) {
+            pushBtn.addEventListener('click', function() {
+                setStatus(pushStatus, 'Включаю...', false);
+                enablePush().catch(function(e) {
+                    setStatus(pushStatus, e && e.message ? e.message : 'Ошибка включения.', true);
+                });
+            });
+        }
+
+        if (passkeyBtn) {
+            passkeyBtn.addEventListener('click', function() {
+                setStatus(passkeyStatus, 'Привязываю...', false);
+                registerPasskey().catch(function(e) {
+                    setStatus(passkeyStatus, e && e.message ? e.message : 'Ошибка привязки.', true);
+                });
+            });
+        }
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', async function() {
+                if (!confirm('Вы действительно хотите отменить бронирование?')) return;
+                
+                setStatus(cancelStatus, 'Проверка Passkey...', false);
+                try {
+                    // Try to verify with Passkey if it exists
+                    await verifyPasskey();
+                    
+                    setStatus(cancelStatus, 'Отменяю...', false);
+                    var resp = await fetch('{{ url_for("api_booking_cancel") }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ booking_token: bookingToken })
+                    });
+                    
+                    var json = await resp.json();
+                    if (resp.ok && json.status === 'ok') {
+                        cancelSection.classList.add('d-none');
+                        cancelledBadge.classList.remove('d-none');
+                        setStatus(cancelStatus, 'Бронирование отменено.', false);
+                    } else {
+                        throw new Error(json.error || 'Не удалось отменить.');
+                    }
+                } catch (e) {
+                    console.error(e);
+                    if (e.name === 'NotAllowedError') {
+                        setStatus(cancelStatus, 'Отмена прервана пользователем.', true);
+                    } else {
+                        setStatus(cancelStatus, 'Ошибка: ' + (e.message || 'Попробуйте позже.'), true);
+                    }
+                }
+            });
+        }
+    })();
+</script>
+{% endblock %}

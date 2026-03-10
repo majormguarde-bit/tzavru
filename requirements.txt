@@ -8,3 +8,5 @@ SQLAlchemy==2.0.48
 gunicorn==25.1.0
 xlsxwriter==3.2.9
 requests==2.32.4
+pywebpush==1.14.1
+webauthn==2.3.0
