@@ -71,6 +71,10 @@
                         </div>
 
                         <div id="cancel-section" class="mt-4 pt-3 border-top {{ 'd-none' if booking.status == 'cancelled' }}">
+                            <div class="mb-3">
+                                <label for="cancel-reason" class="form-label small text-muted">Причина отмены (необязательно)</label>
+                                <textarea id="cancel-reason" class="form-control bg-dark border-secondary text-light form-control-sm" rows="2" placeholder="Например: изменились планы"></textarea>
+                            </div>
                             <button id="btn-cancel" class="btn btn-outline-danger btn-sm w-100">
                                 <i class="bi bi-x-circle me-1"></i> Отменить бронирование
                             </button>
@@ -100,6 +104,7 @@
         var passkeyStatus = document.getElementById('passkey-status');
         var cancelBtn = document.getElementById('btn-cancel');
         var cancelStatus = document.getElementById('cancel-status');
+        var cancelReasonInput = document.getElementById('cancel-reason');
         var cancelSection = document.getElementById('cancel-section');
         var cancelledBadge = document.getElementById('cancelled-badge');
         var copyBtn = document.getElementById('btn-copy-link');
@@ -586,7 +591,10 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'include',
-                        body: JSON.stringify({ booking_token: bookingToken })
+                        body: JSON.stringify({ 
+                            booking_token: bookingToken,
+                            cancel_reason: cancelReasonInput ? cancelReasonInput.value : ''
+                        })
                     });
                     
                     var res = await resp.json().catch(function() { return null; });

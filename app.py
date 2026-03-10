@@ -707,11 +707,16 @@ def api_booking_cancel():
         return jsonify({'status': 'ok', 'message': 'Бронирование уже отменено'})
         
     booking.status = 'cancelled'
+    cancel_reason = payload.get('cancel_reason')
+    if cancel_reason:
+        booking.cancel_reason = cancel_reason
+        
     db.session.commit()
     
     # Notify admin via Telegram if available
     if booking.property.telegram_chat_id:
-        msg = f"❌ <b>Бронирование #{booking.id} ОТМЕНЕНО гостем</b>\nОбъект: {booking.property.name}\nГость: {booking.guest_name}"
+        reason_text = f"\nПричина: {cancel_reason}" if cancel_reason else ""
+        msg = f"❌ <b>Бронирование #{booking.id} ОТМЕНЕНО гостем</b>\nОбъект: {booking.property.name}\nГость: {booking.guest_name}{reason_text}"
         threading.Thread(target=send_telegram_notification, args=(booking.property.telegram_chat_id, msg)).start()
         
     return jsonify({'status': 'ok', 'message': 'Бронирование успешно отменено'})

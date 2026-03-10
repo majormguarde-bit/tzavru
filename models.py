@@ -101,6 +101,7 @@ class Booking(db.Model):
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     booking_token = db.Column(db.String(64), unique=True, index=True)
+    cancel_reason = db.Column(db.Text)
     
     property = db.relationship('Property', backref=db.backref('bookings', lazy=True, cascade="all, delete-orphan"))
 
