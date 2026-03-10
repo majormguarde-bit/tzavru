@@ -57,7 +57,12 @@ app = Flask(__name__)
 app.config.from_object(Config)
 app.config['SECRET_KEY'] = 'dev-secret-key-change-this-in-production'
 
-db = SQLAlchemy(app)
+from models import db, User, UnitType, OptionType, CharacteristicType, PropertyOption, \
+    PropertyCharacteristic, Property, Review, Booking, BookingDevice, BookingPasskey, \
+    BookingOption, ContactRequest, PropertyType, SiteSettings
+
+# Initialize db with app
+db.init_app(app)
 migrate = Migrate(app, db)
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
@@ -308,195 +313,7 @@ def embed_url(value):
         
     return value
 
-# Models
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash = db.Column(db.String(120), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    phone = db.Column(db.String(20))
-    is_admin = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-class UnitType(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
-    short_name = db.Column(db.String(20), nullable=False)
-
-class OptionType(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
-    price = db.Column(db.Float, nullable=False, default=0.0)
-    unit_type_id = db.Column(db.Integer, db.ForeignKey('unit_type.id'))
-
-    unit_type = db.relationship('UnitType', backref='options')
-
-class CharacteristicType(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False, unique=True)
-    unit = db.Column(db.String(20))
-    unit_type_id = db.Column(db.Integer, db.ForeignKey('unit_type.id'))
-
-    unit_type = db.relationship('UnitType', backref='characteristics')
-
-class PropertyOption(db.Model):
-    __tablename__ = 'property_options'
-    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), primary_key=True)
-    option_type_id = db.Column(db.Integer, db.ForeignKey('option_type.id'), primary_key=True)
-    price = db.Column(db.Float, nullable=False, default=0.0)
-    quantity = db.Column(db.Integer, nullable=False, default=1)
-
-    property = db.relationship('Property', backref=db.backref('property_options', lazy='joined', cascade="all, delete-orphan"))
-    option_type = db.relationship('OptionType', backref='property_links')
-
-class PropertyCharacteristic(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
-    characteristic_type_id = db.Column(db.Integer, db.ForeignKey('characteristic_type.id'), nullable=False)
-    value = db.Column(db.String(200), nullable=False)
-
-    characteristic_type = db.relationship('CharacteristicType', backref='property_values')
-    property = db.relationship('Property', backref=db.backref('characteristics', lazy=True, cascade="all, delete-orphan"))
-
-class Property(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    property_type = db.Column(db.String(50), nullable=False)
-    short_description = db.Column(db.String(200), nullable=False)
-    full_description = db.Column(db.Text, nullable=False)
-    location = db.Column(db.String(200), nullable=False)
-    telegram_chat_id = db.Column(db.String(50))
-    image_url = db.Column(db.String(300))
-    gallery_urls = db.Column(db.Text)
-    video_url = db.Column(db.String(500))
-    local_video_urls = db.Column(db.Text)
-    price_per_night = db.Column(db.Float, nullable=False)
-    capacity = db.Column(db.Integer, nullable=False)
-    amenities = db.Column(db.Text)
-    features = db.Column(db.Text)
-    is_available = db.Column(db.Boolean, default=True)
-    latitude = db.Column(db.Float)
-    longitude = db.Column(db.Float)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-class Review(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(200))
-    author = db.Column(db.String(100))
-    client_name = db.Column(db.String(100), nullable=False)
-    text = db.Column(db.Text, nullable=False)
-    rating = db.Column(db.Integer, default=5)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    is_published = db.Column(db.Boolean, default=False)
-    avatar_url = db.Column(db.String(300))
-
-class Booking(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False)
-    guest_name = db.Column(db.String(100), nullable=False)
-    guest_email = db.Column(db.String(120), nullable=False)
-    guest_phone = db.Column(db.String(20), nullable=False)
-    check_in = db.Column(db.Date, nullable=False)
-    check_out = db.Column(db.Date, nullable=False)
-    guests_count = db.Column(db.Integer, nullable=False)
-    special_requests = db.Column(db.Text)
-    total_price = db.Column(db.Float, nullable=False)
-    status = db.Column(db.String(20), default='pending')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    booking_token = db.Column(db.String(64), unique=True, index=True)
-    
-    property = db.relationship('Property', backref=db.backref('bookings', lazy=True, cascade="all, delete-orphan"))
-
-class BookingDevice(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    booking_id = db.Column(db.Integer, db.ForeignKey('booking.id'), nullable=False, index=True)
-    channel = db.Column(db.String(20), nullable=False, default='webpush')
-    endpoint = db.Column(db.Text, nullable=False, unique=True)
-    p256dh = db.Column(db.String(200), nullable=False)
-    auth = db.Column(db.String(200), nullable=False)
-    device_token_hash = db.Column(db.String(64), nullable=False, index=True)
-    user_agent = db.Column(db.String(400))
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    last_seen = db.Column(db.DateTime)
-
-    booking = db.relationship('Booking', backref=db.backref('devices', lazy=True, cascade="all, delete-orphan"))
-
-class BookingPasskey(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    booking_id = db.Column(db.Integer, db.ForeignKey('booking.id'), nullable=False, index=True)
-    credential_id = db.Column(db.String(300), nullable=False, unique=True, index=True)
-    public_key = db.Column(db.LargeBinary, nullable=False)
-    sign_count = db.Column(db.Integer, nullable=False, default=0)
-    transports = db.Column(db.String(200))
-    aaguid = db.Column(db.String(64))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    last_used_at = db.Column(db.DateTime)
-
-    booking = db.relationship('Booking', backref=db.backref('passkeys', lazy=True, cascade="all, delete-orphan"))
-
-class BookingOption(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    booking_id = db.Column(db.Integer, db.ForeignKey('booking.id'), nullable=False)
-    option_type_id = db.Column(db.Integer, db.ForeignKey('option_type.id'))
-    option_name = db.Column(db.String(100), nullable=False)
-    price = db.Column(db.Float, nullable=False, default=0.0)
-    quantity = db.Column(db.Integer, nullable=False, default=1)
-
-    booking = db.relationship('Booking', backref=db.backref('selected_options', lazy=True, cascade="all, delete-orphan"))
-    option_type = db.relationship('OptionType')
-
-class ContactRequest(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), nullable=False)
-    phone = db.Column(db.String(20))
-    message = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    is_processed = db.Column(db.Boolean, default=False)
-
-class PropertyType(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)
-    slug = db.Column(db.String(50), unique=True, nullable=False)
-    description = db.Column(db.String(200))
-    
-    def __repr__(self):
-        return f'<PropertyType {self.name}>'
-
-class SiteSettings(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    site_name = db.Column(db.String(100), default="Imperial Collection")
-    logo_url = db.Column(db.String(300))
-    favicon_url = db.Column(db.String(300))
-    slogan = db.Column(db.String(300), default="Три грани настоящего отдыха в Псковской области")
-    map_url = db.Column(db.Text)
-    phone_main = db.Column(db.String(50), default="+7 900 123-45-67")
-    phone_secondary = db.Column(db.String(50))
-    email_info = db.Column(db.String(120), default="info@imperial-collection.ru")
-    address = db.Column(db.String(200), default="Псковская область, Россия")
-    
-    # Social links
-    social_vk = db.Column(db.String(200))
-    social_telegram = db.Column(db.String(200))
-    social_whatsapp = db.Column(db.String(200))
-    
-    # Mail settings
-    smtp_server = db.Column(db.String(100))
-    smtp_port = db.Column(db.Integer, default=587)
-    smtp_username = db.Column(db.String(100))
-    smtp_password = db.Column(db.String(100))
-    smtp_use_tls = db.Column(db.Boolean, default=True)
-
-    # SMS settings
-    sms_api_id = db.Column(db.String(100))
-    sms_enabled = db.Column(db.Boolean, default=False)
-
-    def __repr__(self):
-        return f'<SiteSettings {self.site_name}>'
-
+# Context Processor
 @app.context_processor
 def inject_site_settings():
     context = {}
@@ -605,6 +422,12 @@ def webpush_subscribe():
 
     if not booking_token:
         return jsonify({'status': 'error', 'error': 'Не указан booking_token'}), 400
+
+    public_key = app.config.get('VAPID_PUBLIC_KEY')
+    private_key = app.config.get('VAPID_PRIVATE_KEY')
+    
+    if not public_key or not private_key:
+        return jsonify({'status': 'error', 'error': 'Ключи уведомлений не настроены на сервере'}), 500
 
     booking = Booking.query.filter_by(booking_token=booking_token).first()
     if not booking:
@@ -730,7 +553,18 @@ def webauthn_registration_verify():
     try:
         credential_payload = dict(payload)
         credential_payload.pop('booking_token', None)
-        credential = _webauthn_credential_from_payload(RegistrationCredential, credential_payload)
+        
+        # Manually extract data for RegistrationCredential constructor if needed
+        # WebAuthn library 2.0+ expects the payload in a specific format
+        try:
+            credential = RegistrationCredential.parse_obj(credential_payload)
+        except:
+            try:
+                credential = RegistrationCredential.model_validate(credential_payload)
+            except:
+                # Direct creation if standard methods fail
+                credential = RegistrationCredential(**credential_payload)
+
         verification = verify_registration_response(
             credential=credential,
             expected_challenge=base64url_to_bytes(challenge_b64),
@@ -825,7 +659,17 @@ def webauthn_authentication_verify():
     try:
         credential_payload = dict(payload)
         credential_payload.pop('booking_token', None)
-        credential = _webauthn_credential_from_payload(AuthenticationCredential, credential_payload)
+        
+        # Handle different versions of webauthn library
+        try:
+            credential = AuthenticationCredential.parse_obj(credential_payload)
+        except:
+            try:
+                credential = AuthenticationCredential.model_validate(credential_payload)
+            except:
+                # Direct creation if standard methods fail
+                credential = AuthenticationCredential(**credential_payload)
+
         verification = verify_authentication_response(
             credential=credential,
             expected_challenge=base64url_to_bytes(challenge_b64),
@@ -1055,6 +899,8 @@ def booking(property_id):
                         [f"{item.option_name} ({item.quantity} шт. × {option_days} ночей, +{(item.price * item.quantity * option_days):,.0f} руб.)" for item in booking.selected_options]
                     ) + '</p>'
 
+                success_url = url_for('booking_success', booking_token=booking.booking_token, _external=True)
+                
                 html_body = f"""
                 <h3>Новое бронирование!</h3>
                 <p><strong>Объект:</strong> {property.name}</p>
@@ -1065,6 +911,9 @@ def booking(property_id):
                 <p><strong>Гостей:</strong> {booking.guests_count}</p>
                 <p><strong>Сумма:</strong> {booking.total_price} руб.</p>
                 {selected_options_html}
+                <hr>
+                <p>Чтобы включить уведомления и Passkey на смартфоне, откройте эту ссылку: <br>
+                <a href="{success_url}">{success_url}</a></p>
                 """
                 # Run in background thread to avoid blocking response
                 threading.Thread(target=send_email_notification, 
@@ -1791,7 +1640,8 @@ def admin_booking_add():
                 guests_count=int(request.form['guests_count']),
                 special_requests=request.form.get('special_requests', ''),
                 total_price=float(request.form['total_price']),
-                status=request.form['status']
+                status=request.form['status'],
+                booking_token=_generate_token()
             )
             
             db.session.add(booking)
@@ -1808,6 +1658,11 @@ def admin_booking_add():
 @login_required
 def admin_booking_edit(booking_id):
     booking = Booking.query.get_or_404(booking_id)
+    
+    # Ensure booking token exists even on GET
+    if not booking.booking_token:
+        booking.booking_token = _generate_token()
+        db.session.commit()
     
     if request.method == 'POST':
         try:

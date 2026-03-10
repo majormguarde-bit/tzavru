@@ -306,6 +306,21 @@
 <script src="https://npmcdn.com/flatpickr/dist/l10n/ru.js"></script>
 <script>
     // Captcha refresh function
+    window.copyToClipboard = function(text, btn) {
+        navigator.clipboard.writeText(text).then(() => {
+            const originalText = btn.textContent;
+            btn.textContent = 'Скопировано';
+            btn.classList.replace('btn-outline-light', 'btn-success');
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.classList.replace('btn-success', 'btn-outline-light');
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+            alert('Не удалось скопировать ссылку. Пожалуйста, выделите и скопируйте ее вручную.');
+        });
+    }
+
     window.refreshCaptcha = function() {
         const questionEl = document.getElementById('captchaQuestion');
         const inputEl = document.querySelector('input[name="captcha"]');
@@ -498,7 +513,22 @@
                     modalIcon.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
                     modalHeading.textContent = 'Бронирование создано!';
                     modalHeading.className = 'mb-3 text-success';
-                    modalMessage.textContent = data.message;
+                    modalMessage.innerHTML = data.message;
+                    
+                    if (data.booking_token) {
+                        const successUrl = "{{ url_for('booking_success', booking_token='TOKEN_PLACEHOLDER', _external=True) }}".replace('TOKEN_PLACEHOLDER', data.booking_token);
+                        modalMessage.innerHTML += `
+                            <div class="mt-4 p-3 border border-secondary rounded bg-dark">
+                                <div class="fw-semibold text-light mb-2">Ссылка для привязки устройства:</div>
+                                <div class="text-muted small mb-2">Откройте эту ссылку на смартфоне, чтобы включить уведомления и Passkey.</div>
+                                <div class="d-flex gap-2">
+                                    <code class="flex-grow-1 text-break text-info p-2 bg-black rounded" style="font-size: 0.85rem;">${successUrl}</code>
+                                    <button class="btn btn-outline-light btn-sm" onclick="copyToClipboard('${successUrl}', this)">Копировать</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
                     successBtn.style.display = 'inline-block';
                     if (printBtn) {
                         printBtn.style.display = 'inline-block';
