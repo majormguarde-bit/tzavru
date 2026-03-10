@@ -139,6 +139,37 @@
             el.classList.toggle('text-muted', !isError);
         }
 
+        function handleCancellationUI() {
+            // Hide control sections
+            cancelSection.classList.add('d-none');
+            // Show cancelled badge
+            cancelledBadge.classList.remove('d-none');
+            
+            // Disable all action buttons
+            if (printBtn) {
+                printBtn.disabled = true;
+                printBtn.classList.add('opacity-50');
+                printBtn.title = "Бронирование отменено";
+            }
+            if (pushBtn) {
+                pushBtn.disabled = true;
+                pushBtn.classList.add('opacity-50');
+            }
+            if (passkeyBtn) {
+                passkeyBtn.disabled = true;
+                passkeyBtn.classList.add('opacity-50');
+            }
+            if (copyBtn) {
+                copyBtn.disabled = true;
+                copyBtn.classList.add('opacity-50');
+            }
+        }
+
+        // If already cancelled on page load
+        {% if booking.status == 'cancelled' %}
+        window.addEventListener('DOMContentLoaded', handleCancellationUI);
+        {% endif %}
+
         async function copyText(text) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 await navigator.clipboard.writeText(text);
@@ -561,8 +592,7 @@
                     var res = await resp.json().catch(function() { return null; });
                     if (resp.ok && res && res.status === 'ok') {
                         setStatus(cancelStatus, 'Бронирование отменено.', false);
-                        cancelSection.classList.add('d-none');
-                        cancelledBadge.classList.remove('d-none');
+                        handleCancellationUI();
                     } else {
                         setStatus(cancelStatus, (res && res.error) ? res.error : 'Ошибка при отмене.', true);
                         cancelBtn.disabled = false;
