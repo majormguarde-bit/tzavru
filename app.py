@@ -466,15 +466,19 @@ def generate_invoice_pdf(booking):
     # Register font
     font_name = 'Helvetica' # Fallback
     try:
-        pdfmetrics.getFont('Arial')
-        font_name = 'Arial'
-    except:
-        try:
-            pdfmetrics.registerFont(TTFont('Arial', 'C:\\Windows\\Fonts\\arial.ttf'))
-            font_name = 'Arial'
-        except Exception as e:
-            print(f"Font loading error: {e}")
-            pass
+        font_path = os.path.join(app.root_path, 'static', 'fonts', 'Roboto-Regular.ttf')
+        if os.path.exists(font_path):
+            pdfmetrics.registerFont(TTFont('Roboto', font_path))
+            font_name = 'Roboto'
+        else:
+            # Try Arial on Windows as fallback
+            try:
+                pdfmetrics.registerFont(TTFont('Arial', 'C:\\Windows\\Fonts\\arial.ttf'))
+                font_name = 'Arial'
+            except:
+                pass
+    except Exception as e:
+        print(f"Font loading error: {e}")
 
     # Header
     c.setFont(font_name, 20)
@@ -1409,7 +1413,7 @@ def admin_dashboard():
         calendar_events.append({
             'title': f"{booking.property.name} - {booking.guest_name}",
             'start': booking.check_in.isoformat(),
-            'end': booking.check_out.isoformat(),
+            'end': (booking.check_out + timedelta(days=1)).isoformat(),
             'color': color,
             'textColor': text_color,
             'url': url_for('admin_booking_edit', booking_id=booking.id),
