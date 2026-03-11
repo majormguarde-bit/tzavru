@@ -557,16 +557,28 @@ def webauthn_registration_verify():
         credential_payload = dict(payload)
         credential_payload.pop('booking_token', None)
         
-        # Manually extract data for RegistrationCredential constructor if needed
-        # WebAuthn library 2.0+ expects the payload in a specific format
-        try:
-            credential = RegistrationCredential.parse_obj(credential_payload)
-        except:
-            try:
-                credential = RegistrationCredential.model_validate(credential_payload)
-            except:
-                # Direct creation if standard methods fail
-                credential = RegistrationCredential(**credential_payload)
+        # Extract response data
+        response_data = credential_payload.get('response', {})
+        
+        # Prepare RegistrationResponse (AuthenticatorAttestationResponse)
+        # Convert base64url strings to bytes and map keys
+        from webauthn.helpers.structs import AuthenticatorAttestationResponse, AuthenticatorTransport
+        
+        attestation_response = AuthenticatorAttestationResponse(
+            client_data_json=base64url_to_bytes(response_data.get('clientDataJSON')),
+            attestation_object=base64url_to_bytes(response_data.get('attestationObject')),
+            transports=[AuthenticatorTransport(t) for t in response_data.get('transports', [])] if response_data.get('transports') else None
+        )
+        
+        # Prepare RegistrationCredential
+        # Convert base64url strings to bytes and map keys
+        credential = RegistrationCredential(
+            id=credential_payload.get('id'),
+            raw_id=base64url_to_bytes(credential_payload.get('rawId')),
+            response=attestation_response,
+            type=credential_payload.get('type'),
+            authenticator_attachment=credential_payload.get('authenticatorAttachment')
+        )
 
         verification = verify_registration_response(
             credential=credential,
@@ -663,15 +675,27 @@ def webauthn_authentication_verify():
         credential_payload = dict(payload)
         credential_payload.pop('booking_token', None)
         
-        # Handle different versions of webauthn library
-        try:
-            credential = AuthenticationCredential.parse_obj(credential_payload)
-        except:
-            try:
-                credential = AuthenticationCredential.model_validate(credential_payload)
-            except:
-                # Direct creation if standard methods fail
-                credential = AuthenticationCredential(**credential_payload)
+        # Extract response data
+        response_data = credential_payload.get('response', {})
+        
+        # Prepare AuthenticationResponse (AuthenticatorAssertionResponse)
+        from webauthn.helpers.structs import AuthenticatorAssertionResponse
+        
+        assertion_response = AuthenticatorAssertionResponse(
+            client_data_json=base64url_to_bytes(response_data.get('clientDataJSON')),
+            authenticator_data=base64url_to_bytes(response_data.get('authenticatorData')),
+            signature=base64url_to_bytes(response_data.get('signature')),
+            user_handle=base64url_to_bytes(response_data.get('userHandle')) if response_data.get('userHandle') else None
+        )
+        
+        # Prepare AuthenticationCredential
+        credential = AuthenticationCredential(
+            id=credential_payload.get('id'),
+            raw_id=base64url_to_bytes(credential_payload.get('rawId')),
+            response=assertion_response,
+            type=credential_payload.get('type'),
+            authenticator_attachment=credential_payload.get('authenticatorAttachment')
+        )
 
         verification = verify_authentication_response(
             credential=credential,
