@@ -232,16 +232,16 @@ def send_webpush_notification(subscription_info, data):
             vapid_private_key=vapid_private,
             vapid_claims=vapid_claims
         )
-        return True
+        return {'status': 'success'}
     except WebPushException as ex:
         print(f"WebPush Error: {ex}")
         # If 410 Gone, the subscription is no longer valid
         if ex.response and ex.response.status_code == 410:
-            return "gone"
-        return False
+            return {'status': 'gone', 'error': str(ex)}
+        return {'status': 'error', 'error': str(ex)}
     except Exception as e:
         print(f"Error in send_webpush_notification: {e}")
-        return False
+        return {'status': 'error', 'error': str(e)}
 
 def notify_booking_devices(booking_id, title, body, icon='/static/icons/icon-192x192.png', url=None):
     """
@@ -250,6 +250,10 @@ def notify_booking_devices(booking_id, title, body, icon='/static/icons/icon-192
     with app.app_context():
         devices = BookingDevice.query.filter_by(booking_id=booking_id, is_active=True).all()
         results = []
+        
+        # Log entry for the batch (optional, or per device)
+        # We'll log per device or aggregate. Let's log per device attempt for detail.
+        
         for device in devices:
             sub_info = {
                 'endpoint': device.endpoint,
@@ -266,10 +270,30 @@ def notify_booking_devices(booking_id, title, body, icon='/static/icons/icon-192
             }
             
             res = send_webpush_notification(sub_info, payload)
-            if res == "gone":
+            
+            status = res.get('status')
+            error_details = res.get('error')
+            
+            if status == "gone":
                 device.is_active = False
-                db.session.commit()
+                # Update status for log
+                status = 'failed (unsubscribed)'
+            elif status == 'error':
+                status = 'failed'
+            
+            # Create log entry
+            log_entry = NotificationLog(
+                booking_id=booking_id,
+                title=title,
+                message=body,
+                status=status,
+                error_details=error_details
+            )
+            db.session.add(log_entry)
+            
             results.append(res)
+            
+        db.session.commit()
         return results
 
 # Добавляем фильтры для Jinja2
@@ -1766,6 +1790,16 @@ def admin_booking_send_push(booking_id):
     
     flash('Запрос на отправку уведомления отправлен', 'success')
     return redirect(url_for('admin_booking_edit', booking_id=booking.id))
+
+@app.route('/admin/bookings/unbind-passkey/<int:passkey_id>', methods=['POST'])
+@login_required
+def admin_booking_unbind_passkey(passkey_id):
+    passkey = BookingPasskey.query.get_or_404(passkey_id)
+    booking_id = passkey.booking_id
+    db.session.delete(passkey)
+    db.session.commit()
+    flash('Passkey успешно удален', 'success')
+    return redirect(url_for('admin_booking_edit', booking_id=booking_id))
 
 @app.route('/admin/bookings/delete/<int:booking_id>', methods=['POST'])
 @login_required
