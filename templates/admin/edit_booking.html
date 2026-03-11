@@ -174,7 +174,7 @@
                         <form action="{{ url_for('admin_booking_send_push', booking_id=booking.id) }}" method="POST">
                             <div class="mb-3">
                                 <label class="form-label">Заголовок</label>
-                                <input type="text" name="title" class="form-control" value="Imperial Collection">
+                                <input type="text" name="title" class="form-control" value="{{ site_settings.site_name if site_settings else 'Imperial Collection' }}">
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Сообщение</label>

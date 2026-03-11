@@ -1052,10 +1052,14 @@ def booking_success(booking_token):
 
 @app.route('/manifest.webmanifest')
 def manifest_webmanifest():
+    settings = SiteSettings.query.first()
+    site_name = settings.site_name if settings else "Imperial Collection"
+    short_name = site_name[:12] # Limit short_name length
+    
     return jsonify({
-        "name": "Imperial Collection",
-        "short_name": "Imperial",
-        "description": "Три грани настоящего отдыха в Псковской области",
+        "name": site_name,
+        "short_name": short_name,
+        "description": settings.slogan if settings and settings.slogan else "Три грани настоящего отдыха в Псковской области",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#0b0b0b",
@@ -1769,8 +1773,10 @@ def admin_booking_edit(booking_id):
                 # Need to use current app context or ensure it's available in thread
                 # Since notify_booking_devices creates its own app context, it's fine.
                 # However, for robustness we can pass specific parameters.
+                settings = SiteSettings.query.first()
+                site_name = settings.site_name if settings else 'Imperial Collection'
                 threading.Thread(target=notify_booking_devices, 
-                               args=(booking.id, 'Imperial Collection', msg)).start()
+                               args=(booking.id, site_name, msg)).start()
             
             db.session.commit()
             flash('Бронирование обновлено', 'success')
@@ -1789,7 +1795,9 @@ def admin_booking_edit(booking_id):
 @login_required
 def admin_booking_send_push(booking_id):
     booking = Booking.query.get_or_404(booking_id)
-    title = request.form.get('title', 'Imperial Collection')
+    settings = SiteSettings.query.first()
+    default_title = settings.site_name if settings else 'Imperial Collection'
+    title = request.form.get('title', default_title)
     message = request.form.get('message', 'Тестовое уведомление')
     
     # Run in background
