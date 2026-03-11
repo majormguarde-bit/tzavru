@@ -136,6 +136,21 @@
                 </button>
             </div>
         </form>
+        
+        <!-- Test Email Section -->
+        <hr class="my-4">
+        <h5 class="card-title mb-3">Тестирование отправки почты</h5>
+        <form action="{{ url_for('admin_test_email') }}" method="POST" class="row g-3 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label">Email получателя</label>
+                <input type="email" name="test_email" class="form-control" placeholder="example@mail.com" required value="{{ settings.email_info }}">
+            </div>
+            <div class="col-md-6">
+                <button type="submit" class="btn btn-outline-info">
+                    <i class="bi bi-envelope-paper me-2"></i>Отправить тестовое письмо
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 

@@ -2036,6 +2036,24 @@ def admin_settings():
         
     return render_template('admin/settings.html', settings=settings)
 
+@app.route('/admin/settings/test-email', methods=['POST'])
+@login_required
+def admin_test_email():
+    email = request.form.get('test_email')
+    if not email:
+        flash('Введите email для теста', 'error')
+        return redirect(url_for('admin_settings'))
+    
+    try:
+        # Send in background to avoid blocking
+        threading.Thread(target=send_email_notification, 
+                       args=("Тестовое письмо", "<h3>Это тестовое письмо</h3><p>Настройки SMTP работают корректно!</p>", email)).start()
+        flash(f'Тестовое письмо отправлено на {email}', 'success')
+    except Exception as e:
+        flash(f'Ошибка отправки: {e}', 'error')
+        
+    return redirect(url_for('admin_settings'))
+
 @app.route('/admin/settings/reset-db', methods=['POST'])
 @login_required
 @admin_required
