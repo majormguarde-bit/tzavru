@@ -536,10 +536,10 @@ def generate_invoice_pdf(booking):
     y -= 0.8*cm
     
     # Base Stay
-    base_price = booking.property.price_per_night * days
-    c.drawString(2*cm, y, f"Проживание ({days} ночей)")
-    c.drawString(10*cm, y, "1")
-    c.drawString(13*cm, y, f"{base_price:,.2f} руб.")
+    base_price = booking.property.price_per_night * days * booking.guests_count
+    c.drawString(2*cm, y, f"Проживание ({days} ночей, {booking.guests_count} гостей)")
+    c.drawString(10*cm, y, f"{days} x {booking.guests_count}")
+    c.drawString(13*cm, y, f"{booking.property.price_per_night:,.2f} руб.")
     c.drawString(16*cm, y, f"{base_price:,.2f} руб.")
     y -= 0.6*cm
     
@@ -571,6 +571,74 @@ def generate_invoice_pdf(booking):
     c.save()
     buffer.seek(0)
     return buffer.read()
+
+# Helper for booking emails
+def send_booking_info_email(booking_id, subject, header_text):
+    """
+    Generates booking details HTML and PDF invoice, then sends email to guest.
+    Runs asynchronously in a thread.
+    """
+    def _send(app_context):
+        with app_context:
+            try:
+                booking = Booking.query.get(booking_id)
+                if not booking or not booking.guest_email:
+                    return
+
+                property = booking.property
+                
+                # Options logic
+                selected_options_html = ''
+                if booking.selected_options:
+                    option_days = (booking.check_out - booking.check_in).days
+                    options_list = []
+                    for item in booking.selected_options:
+                        unit = "шт."
+                        if item.option_type and item.option_type.unit_type:
+                            unit = item.option_type.unit_type.short_name
+                        price_total = item.price * item.quantity * option_days
+                        options_list.append(f"{item.option_name} ({item.quantity} {unit} × {option_days} ночей, +{price_total:,.0f} руб.)")
+                    selected_options_html = '<p><strong>Опции:</strong><br>' + '<br>'.join(options_list) + '</p>'
+
+                success_url = url_for('booking_success', booking_token=booking.booking_token, _external=True)
+                check_in_formatted = format_date_ru(booking.check_in)
+                check_out_formatted = format_date_ru(booking.check_out)
+
+                status_display = {
+                    'pending': 'Ожидает',
+                    'confirmed': 'Подтверждено',
+                    'completed': 'Завершено',
+                    'cancelled': 'Отменено'
+                }.get(booking.status, booking.status)
+
+                html_body = f\"\"\"
+                <h3>{header_text}</h3>
+                <p><strong>Объект:</strong> {property.name}</p>
+                <p><strong>Гость:</strong> {booking.guest_name}</p>
+                <p><strong>Email:</strong> {booking.guest_email}</p>
+                <p><strong>Телефон:</strong> {booking.guest_phone}</p>
+                <p><strong>Даты:</strong> {check_in_formatted} - {check_out_formatted}</p>
+                <p><strong>Гостей:</strong> {booking.guests_count}</p>
+                <p><strong>Сумма:</strong> {booking.total_price:,.0f} руб.</p>
+                <p><strong>Статус:</strong> {status_display}</p>
+                {selected_options_html}
+                <hr>
+                <p>Чтобы увидеть подробности, включить уведомления и Passkey на смартфоне, откройте эту ссылку: <br>
+                <a href="{success_url}">{success_url}</a></p>
+                \"\"\"
+
+                # Generate Invoice PDF
+                pdf_data = generate_invoice_pdf(booking)
+                pdf_name = f"invoice_{booking.id}.pdf"
+
+                # Send to Guest
+                send_email_notification(subject, html_body, booking.guest_email, pdf_data, pdf_name)
+                    
+            except Exception as e:
+                print(f"Error in send_booking_info_email: {e}")
+
+    threading.Thread(target=_send, args=(app.app_context(),)).start()
+
 
 @app.route('/api/webpush/public-key')
 def webpush_public_key():
@@ -1056,7 +1124,7 @@ def booking(property_id):
                 })
                 options_total += option_price * option_qty * days
 
-            total_price = days * property.price_per_night + options_total
+            total_price = days * guests_count * property.price_per_night + options_total
 
             booking = Booking(
                 property_id=property_id,
@@ -1822,6 +1890,10 @@ def admin_booking_confirm(booking_id):
     booking = Booking.query.get_or_404(booking_id)
     booking.status = 'confirmed'
     db.session.commit()
+    
+    # Send email notification
+    send_booking_info_email(booking.id, f"Бронирование подтверждено: {booking.property.name}", "Ваше бронирование подтверждено! 🎉")
+    
     flash('Бронирование подтверждено', 'success')
     return redirect(url_for('admin_bookings'))
 
@@ -1831,6 +1903,10 @@ def admin_booking_cancel(booking_id):
     booking = Booking.query.get_or_404(booking_id)
     booking.status = 'cancelled'
     db.session.commit()
+    
+    # Send email notification
+    send_booking_info_email(booking.id, f"Бронирование отменено: {booking.property.name}", "Ваше бронирование отменено.")
+    
     flash('Бронирование отменено', 'info')
     return redirect(url_for('admin_bookings'))
 
@@ -1927,6 +2003,8 @@ def admin_booking_edit(booking_id):
             if not booking.booking_token:
                 booking.booking_token = _generate_token()
             
+            db.session.commit()
+
             # Send notification if status changed
             if old_status != booking.status:
                 status_texts = {
@@ -1937,17 +2015,20 @@ def admin_booking_edit(booking_id):
                 }
                 msg = status_texts.get(booking.status, f'Статус вашего бронирования изменен на: {booking.status}')
                 
-                # Notify in background with app context
-                # Need to use current app context or ensure it's available in thread
-                # Since notify_booking_devices creates its own app context, it's fine.
-                # However, for robustness we can pass specific parameters.
+                # 1. Push Notification
                 settings = SiteSettings.query.first()
                 site_name = settings.site_name if settings else 'Imperial Collection'
                 threading.Thread(target=notify_booking_devices, 
                                args=(booking.id, site_name, msg)).start()
-            
-            db.session.commit()
-            flash('Бронирование обновлено', 'success')
+                
+                # 2. Email Notification
+                subject = f"Изменение статуса бронирования: {booking.property.name}"
+                send_booking_info_email(booking.id, subject, msg)
+                
+                flash(f'Бронирование обновлено, уведомления отправлены ({booking.status})', 'success')
+            else:
+                flash('Бронирование обновлено', 'success')
+
             return redirect(url_for('admin_bookings'))
         except ValueError as e:
             flash(f'Ошибка данных: {e}', 'error')

@@ -761,8 +761,8 @@
 
                 const diffTime = Math.abs(checkOutDate - checkInDate);
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                const baseTotal = diffDays * pricePerNight;
                 const guestsCount = Math.max(1, Number(guestsInput ? guestsInput.value : 1) || 1);
+                const baseTotal = diffDays * guestsCount * pricePerNight;
                 let optionsTotal = 0;
                 let selectedOptionsRows = '';
 
