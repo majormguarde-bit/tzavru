@@ -611,7 +611,7 @@ def send_booking_info_email(booking_id, subject, header_text):
                     'cancelled': 'Отменено'
                 }.get(booking.status, booking.status)
 
-                html_body = f\"\"\"
+                html_body = f"""
                 <h3>{header_text}</h3>
                 <p><strong>Объект:</strong> {property.name}</p>
                 <p><strong>Гость:</strong> {booking.guest_name}</p>
@@ -625,7 +625,7 @@ def send_booking_info_email(booking_id, subject, header_text):
                 <hr>
                 <p>Чтобы увидеть подробности, включить уведомления и Passkey на смартфоне, откройте эту ссылку: <br>
                 <a href="{success_url}">{success_url}</a></p>
-                \"\"\"
+                """
 
                 # Generate Invoice PDF
                 pdf_data = generate_invoice_pdf(booking)
