@@ -16,8 +16,8 @@ class Config:
     # Если DATABASE_URL не задан, используем локальный путь
     db_path = os.environ.get('DATABASE_URL')
     if not db_path:
-        # Revert to app.db to restore data
-        db_path = 'sqlite:///' + os.path.join(BASE_DIR, 'instance', 'app.db')
+        # Use imperial.db by default
+        db_path = 'sqlite:///' + os.path.join(BASE_DIR, 'instance', 'imperial.db')
     
     SQLALCHEMY_DATABASE_URI = db_path
     SQLALCHEMY_TRACK_MODIFICATIONS = False
