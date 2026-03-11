@@ -516,10 +516,18 @@
         bookingForm.addEventListener('submit', function(e) {
             e.preventDefault();
             
-            const submitBtn = bookingForm.querySelector('button[type="submit"]');
-            const originalBtnText = submitBtn.innerHTML;
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Обработка...';
+            // Find submit buttons (there might be one in form and one in fixed bar, or just one linked)
+            // Since buttons have form="bookingForm", we can query all buttons associated with this form
+            // However, inside the submit handler, we just need to show loading state on the active button.
+            // A simple way is to disable all submit buttons for this form.
+            const submitBtns = document.querySelectorAll('button[type="submit"][form="bookingForm"], #bookingForm button[type="submit"]');
+            
+            submitBtns.forEach(btn => {
+                btn.dataset.originalContent = btn.innerHTML;
+                btn.disabled = true;
+                // Keep the size same if possible, or just show spinner
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+            });
 
             const formData = new FormData(bookingForm);
 
@@ -566,11 +574,17 @@
                 modalHeading.className = 'mb-3 text-warning';
                 modalMessage.textContent = 'Произошла ошибка при отправке запроса. Пожалуйста, попробуйте позже.';
                 successBtn.style.display = 'none';
+                printBtn.style.display = 'none';
+                payBtn.style.display = 'none';
                 resultModal.show();
             })
             .finally(() => {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalBtnText;
+                submitBtns.forEach(btn => {
+                    btn.disabled = false;
+                    if (btn.dataset.originalContent) {
+                        btn.innerHTML = btn.dataset.originalContent;
+                    }
+                });
             });
         });
         
