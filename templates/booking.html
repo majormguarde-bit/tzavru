@@ -163,7 +163,8 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Email *</label>
-                                    <input type="email" name="guest_email" class="form-control" required>
+                                    <input type="email" name="guest_email" class="form-control" 
+                                           value="{% if current_user_obj %}{{ current_user_obj.email }}{% endif %}" required>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Телефон *</label>

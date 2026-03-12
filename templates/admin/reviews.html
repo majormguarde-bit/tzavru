@@ -29,7 +29,7 @@
                 <td>{{ review.id }}</td>
                 <td>
                     {% if review.avatar_url %}
-                    <img src="{{ review.avatar_url }}" alt="" class="rounded-circle me-2" style="width: 24px; height: 24px;">
+                    <img src="{{ review.avatar_url }}" alt="{{ review.client_name }}" class="rounded-circle me-2" style="width: 24px; height: 24px;" loading="lazy">
                     {% endif %}
                     {{ review.client_name }}
                 </td>

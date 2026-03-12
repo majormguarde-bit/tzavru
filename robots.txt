@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+
+# Allow all important pages
+Allow: /$
+Allow: /property/*
+Allow: /login
+Allow: /register
+Allow: /booking/*
+
+# Disallow admin and sensitive areas
+Disallow: /admin/
+Disallow: /admin/*
+Disallow: /api/
+Disallow: /static/uploads/
+Disallow: /tmp/
+Disallow: /logs/
+
+# Crawl-delay for polite crawling
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://pskovskiybereg.ru/sitemap.xml

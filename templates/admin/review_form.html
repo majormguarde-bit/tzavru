@@ -24,7 +24,7 @@
                         <label class="form-label">Фото автора (аватар)</label>
                         {% if review and review.avatar_url %}
                         <div class="mb-2">
-                            <img src="{{ review.avatar_url }}" alt="" class="rounded-circle" style="width: 64px; height: 64px;">
+                            <img src="{{ review.avatar_url }}" alt="{{ review.client_name if review.client_name else 'Review Avatar' }}" class="rounded-circle" style="width: 64px; height: 64px;" loading="lazy">
                         </div>
                         {% endif %}
                         <input type="file" name="avatar" class="form-control" accept="image/*">

@@ -2,6 +2,46 @@
 
 {% block title %}{{ property.name }}{% endblock %}
 
+{% block og_title %}{{ property.name }} - {{ site_settings.site_name if site_settings else 'Imperial Collection' }}{% endblock %}
+{% block og_description %}{{ property.description[:200] if property.description else 'Прекрасное место для отдыха в Псковской области' }}{% endblock %}
+{% block og_type %}website{% endblock %}
+
+{% block twitter_title %}{{ property.name }} - {{ site_settings.site_name if site_settings else 'Imperial Collection' }}{% endblock %}
+{% block twitter_description %}{{ property.description[:200] if property.description else 'Прекрасное место для отдыха в Псковской области' }}{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Hotel",
+  "name": "{{ property.name }}",
+  "description": "{{ property.description|replace('"', '\\"') if property.description else 'Прекрасное место для отдыха в Псковской области' }}",
+  "url": "{{ request.url_root.rstrip('/') }}/property/{{ property.id }}",
+  "image": "{{ property.image_url }}",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "{{ property.location }}",
+    "addressRegion": "Псковская область",
+    "addressCountry": "RU"
+  },
+  "geo": {
+    "@type": "GeoCoordinates",
+    "latitude": {{ property.latitude }},
+    "longitude": {{ property.longitude }}
+  },
+  "priceRange": "{{ property.price_per_night|format_price }} ₽",
+  "numberOfRooms": {{ property.capacity }},
+  "checkinTime": "14:00",
+  "checkoutTime": "12:00",
+  "telephone": "{{ site_settings.phone if site_settings and site_settings.phone else '+7-999-123-45-67' }}",
+  "starRating": {
+    "@type": "Rating",
+    "ratingValue": "4.5"
+  }
+}
+</script>
+{% endblock %}
+
 {% block content %}
 <div class="property-detail-page">
     <!-- Hero -->
@@ -23,13 +63,13 @@
             <div class="carousel-inner h-100">
                 <!-- Main Image (Index 0) -->
                 <div class="carousel-item active h-100">
-                    <img src="{{ property.image_url }}" class="d-block w-100 h-100" style="object-fit: cover; cursor: pointer;" alt="{{ property.name }}" onclick="openImageModal(this.src)">
+                    <img src="{{ property.image_url }}" class="d-block w-100 h-100" style="object-fit: cover; cursor: pointer;" alt="{{ property.name }}" onclick="openImageModal(this.src)" loading="lazy">
                 </div>
                 <!-- Gallery Images (Index 1+) -->
                 {% if property.gallery_urls %}
                     {% for img_url in property.gallery_urls|from_json %}
                     <div class="carousel-item h-100">
-                        <img src="{{ img_url }}" class="d-block w-100 h-100" style="object-fit: cover; cursor: pointer;" alt="Gallery Image" onclick="openImageModal(this.src)">
+                        <img src="{{ img_url }}" class="d-block w-100 h-100" style="object-fit: cover; cursor: pointer;" alt="Gallery Image" onclick="openImageModal(this.src)" loading="lazy">
                     </div>
                     {% endfor %}
                 {% endif %}
@@ -76,13 +116,13 @@
             <div class="d-flex flex-wrap justify-content-center gap-2">
                 <!-- Main Image Thumb (Index 0) -->
                 <div class="gallery-thumb-wrapper active" onclick="goToSlide(0, this)">
-                    <img src="{{ property.image_url }}" alt="{{ property.name }}" class="img-fluid">
+                    <img src="{{ property.image_url }}" alt="{{ property.name }}" class="img-fluid" loading="lazy">
                 </div>
                 
                 <!-- Gallery Thumbs (Index 1+) -->
                 {% for img_url in gallery %}
                 <div class="gallery-thumb-wrapper" onclick="goToSlide({{ loop.index }}, this)">
-                    <img src="{{ img_url }}" alt="Gallery Image" class="img-fluid">
+                    <img src="{{ img_url }}" alt="Gallery Image" class="img-fluid" loading="lazy">
                 </div>
                 {% endfor %}
             </div>
@@ -155,7 +195,7 @@
                     <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" data-bs-dismiss="modal" aria-label="Close" style="z-index: 1056; filter: invert(1) grayscale(100%) brightness(200%);"></button>
                 </div>
                 <div class="modal-body p-0 text-center d-flex align-items-center justify-content-center" style="min-height: 200px;">
-                    <img src="" id="modalImage" class="img-fluid rounded shadow-lg" style="max-height: 90vh; max-width: 100%; object-fit: contain;">
+                    <img src="" id="modalImage" class="img-fluid rounded shadow-lg" style="max-height: 90vh; max-width: 100%; object-fit: contain;" alt="Gallery Image" loading="lazy">
                 </div>
             </div>
         </div>

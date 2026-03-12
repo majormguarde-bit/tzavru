@@ -2,6 +2,45 @@
 
 {% block title %}{{ site_settings.site_name if site_settings else 'Imperial Collection' }}: Псковский берег - {{ site_settings.slogan if site_settings and site_settings.slogan else 'Три грани настоящего отдыха' }}{% endblock %}
 
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "{{ site_settings.site_name if site_settings else 'Imperial Collection' }}",
+  "description": "{{ site_settings.slogan if site_settings and site_settings.slogan else 'Три грани настоящего отдыха' }}",
+  "url": "{{ request.url_root.rstrip('/') }}",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "{{ request.url_root.rstrip('/') }}/search?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "{{ site_settings.site_name if site_settings else 'Imperial Collection' }}",
+  "description": "{{ site_settings.slogan if site_settings and site_settings.slogan else 'Три грани настоящего отдыха' }}",
+  "url": "{{ request.url_root.rstrip('/') }}",
+  "logo": "{{ site_settings.logo_url if site_settings and site_settings.logo_url else '' }}",
+  "address": {
+    "@type": "PostalAddress",
+    "addressRegion": "Псковская область",
+    "addressCountry": "RU"
+  },
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "contactType": "customer service",
+    "telephone": "{{ site_settings.phone if site_settings and site_settings.phone else '+7-999-123-45-67' }}",
+    "email": "{{ site_settings.email if site_settings and site_settings.email else 'info@imperial-collection.ru' }}"
+  }
+}
+</script>
+{% endblock %}
+
 {% block extra_js %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
@@ -91,7 +130,7 @@
 
                 if (avatar) {
                     // Assuming avatar is high quality enough, or we could have a separate data-full-image attribute
-                    modalAvatarContainer.innerHTML = '<img src="' + avatar + '" class="rounded-circle shadow-sm" style="width: 100px; height: 100px; object-fit: cover;">';
+                    modalAvatarContainer.innerHTML = '<img src="' + avatar + '" class="rounded-circle shadow-sm" style="width: 100px; height: 100px; object-fit: cover;" loading="lazy">';
                 } else {
                     modalAvatarContainer.innerHTML = '<div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center shadow-sm" style="width: 100px; height: 100px;"><i class="bi bi-person-fill h1 mb-0"></i></div>';
                 }
@@ -154,12 +193,12 @@
             {% if properties %}
                 {% for property in properties %}
                 <div class="carousel-item h-100 {% if loop.first %}active{% endif %}">
-                    <img src="{{ property.image_url }}" class="d-block w-100" alt="{{ property.name }}">
+                    <img src="{{ property.image_url }}" class="d-block w-100" alt="{{ property.name }}" loading="lazy">
                 </div>
                 {% endfor %}
             {% else %}
                 <div class="carousel-item active h-100">
-                    <img src="https://sfile.chatglm.cn/images-ppt/5f816eb42a51.jpg" class="d-block w-100" alt="{{ site_settings.site_name if site_settings else 'Imperial Collection' }}">
+                    <img src="https://sfile.chatglm.cn/images-ppt/5f816eb42a51.jpg" class="d-block w-100" alt="{{ site_settings.site_name if site_settings else 'Imperial Collection' }}" loading="lazy">
                 </div>
             {% endif %}
         </div>
@@ -192,7 +231,7 @@
             <div class="col-12 col-md-6 col-lg-4">
                 <div class="property-card h-100">
                     <div class="property-image-wrapper">
-                        <img src="{{ property.image_url }}" alt="{{ property.name }}" class="property-image">
+                        <img src="{{ property.image_url }}" alt="{{ property.name }}" class="property-image" loading="lazy">
                         <div class="property-badge">
                             {% if property.property_type == 'hunting' %}
                                 <i class="bi bi-crosshair"></i> Охота
@@ -356,7 +395,7 @@
                                 <div class="card-body">
                                     <div class="d-flex align-items-center mb-3">
                                         {% if review.avatar_url %}
-                                        <img src="{{ review.avatar_url }}" alt="{{ review.author or review.client_name }}" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;">
+                                        <img src="{{ review.avatar_url }}" alt="{{ review.author or review.client_name }}" class="rounded-circle me-3" style="width: 50px; height: 50px; object-fit: cover;" loading="lazy">
                                         {% else %}
                                         <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
                                             <i class="bi bi-person-fill h4 mb-0"></i>

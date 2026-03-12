@@ -116,7 +116,11 @@
                     </div>
                 </div>
 
-                <a class="btn btn-primary w-100" href="{{ url_for('index') }}">Вернуться на главную</a>
+                {% if not session.user_id %}
+                <a class="btn btn-primary w-100" href="{{ url_for('public_login') }}">Войти в личный кабинет</a>
+                {% else %}
+                <a class="btn btn-primary w-100" href="{{ url_for('my_bookings') }}">Перейти к моим заявкам</a>
+                {% endif %}
             </div>
         </div>
     </div>

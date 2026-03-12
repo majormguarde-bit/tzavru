@@ -1824,11 +1824,18 @@ def booking(property_id):
 
             total_price = days * guests_count * property.price_per_night + options_total
 
+            # Используем email авторизованного пользователя, если он вошел в систему
+            guest_email = request.form['guest_email']
+            if 'user_id' in session:
+                current_user = User.query.get(session['user_id'])
+                if current_user:
+                    guest_email = current_user.email
+
             confirmation_code = ''.join(secrets.choice(string.digits) for _ in range(6))
             booking = Booking(
                 property_id=property_id,
                 guest_name=request.form['guest_name'],
-                guest_email=request.form['guest_email'],
+                guest_email=guest_email,
                 guest_phone=request.form.get('guest_phone', ''),
                 check_in=check_in,
                 check_out=check_out,
@@ -1919,25 +1926,32 @@ def booking(property_id):
                 <p>Чтобы увидеть подробности, откройте админ-панель.</p>
                 """
 
-                # Guest email body
+                # Guest email body - информационное уведомление о заявке
                 html_body_guest = f"""
-                <h3>Бронирование #{booking.id} принято в обработку!</h3>
+                <h3>Ваша заявка #{booking.id} принята!</h3>
                 <p>Здравствуйте, {booking.guest_name}!</p>
-                <p>Ваше бронирование получено. Для завершения регистрации, пожалуйста, подтвердите ваш Email.</p>
-                <div style="background-color: #f8f9fa; padding: 15px; border-left: 5px solid #007bff; margin: 20px 0;">
-                    <p style="margin: 0;"><strong>Ваш код подтверждения:</strong></p>
-                    <h2 style="margin: 10px 0; color: #007bff;">{booking.confirmation_code}</h2>
-                    <p style="margin: 0;">Пожалуйста, отправьте этот код ответным письмом на адрес: <a href="mailto:{system_email}">{system_email}</a></p>
+                <p>Ваша заявка на бронирование получена и находится в обработке. Мы свяжемся с вами в ближайшее время для подтверждения.</p>
+                
+                <div style="background-color: #f8f9fa; padding: 15px; border-left: 5px solid #28a745; margin: 20px 0;">
+                    <p style="margin: 0;"><strong>Номер вашей заявки:</strong></p>
+                    <h2 style="margin: 10px 0; color: #28a745;">{booking.id}</h2>
+                    <p style="margin: 0;">Сохраните этот номер для справки.</p>
                 </div>
-                <p><strong>Детали бронирования:</strong></p>
+                
+                <p><strong>Детали заявки:</strong></p>
                 <p><strong>Объект:</strong> {property.name}</p>
                 <p><strong>Даты:</strong> {check_in_formatted} - {check_out_formatted}</p>
                 <p><strong>Гостей:</strong> {booking.guests_count}</p>
                 <p><strong>Сумма:</strong> {booking.total_price:,.0f} руб.</p>
                 {selected_options_html}
+                
                 <hr>
-                <p>Чтобы включить уведомления и Passkey на смартфоне, откройте эту ссылку: <br>
+                <p>Вы можете отслеживать статус вашей заявки в личном кабинете: <br>
                 <a href="{success_url}">{success_url}</a></p>
+                
+                <p style="margin-top: 20px; font-size: 0.9em; color: #6c757d;">
+                    Если у вас есть вопросы, пожалуйста, свяжитесь с нами по телефону или email.
+                </p>
                 """
                 
                 # Generate Invoice PDF
@@ -1950,7 +1964,7 @@ def booking(property_id):
 
                 # Send to Guest
                 threading.Thread(target=send_email_notification, 
-                               args=(f"Подтверждение бронирования #{booking.id}", html_body_guest, booking.guest_email, pdf_data, pdf_name)).start()
+                               args=(f"Ваша заявка #{booking.id} принята", html_body_guest, booking.guest_email, pdf_data, pdf_name)).start()
 
             except Exception as e:
                 print(f"Error sending booking email: {e}")
@@ -2077,8 +2091,14 @@ def my_bookings():
         flash('Для просмотра заявок необходимо войти в систему', 'warning')
         return redirect(url_for('public_login'))
     
-    # Получаем все заявки пользователя, отсортированные по дате создания (новые сверху)
-    user_bookings = Booking.query.filter_by(guest_email=session.get('username')).order_by(Booking.created_at.desc()).all()
+    # Получаем email текущего пользователя
+    current_user = User.query.get(session['user_id'])
+    if not current_user:
+        flash('Пользователь не найден', 'error')
+        return redirect(url_for('public_login'))
+    
+    # Получаем все заявки пользователя по email, отсортированные по дате создания (новые сверху)
+    user_bookings = Booking.query.filter_by(guest_email=current_user.email).order_by(Booking.created_at.desc()).all()
     
     # Разделяем на заявки и бронирования
     pending_bookings = [b for b in user_bookings if b.status == 'pending']
@@ -2089,6 +2109,49 @@ def my_bookings():
                          pending_bookings=pending_bookings,
                          confirmed_bookings=confirmed_bookings,
                          cancelled_bookings=cancelled_bookings)
+
+@app.route('/sitemap.xml')
+def sitemap():
+    """Генерация XML sitemap для поисковых систем"""
+    from datetime import datetime
+    from urllib.parse import urljoin
+    
+    # Get base URL
+    base_url = request.url_root.rstrip('/')
+    
+    # Create sitemap XML
+    sitemap_xml = ['<?xml version="1.0" encoding="UTF-8"?>']
+    sitemap_xml.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    
+    # Add main pages
+    pages = [
+        {'url': '/', 'priority': '1.0', 'changefreq': 'daily'},
+        {'url': '/login', 'priority': '0.8', 'changefreq': 'monthly'},
+        {'url': '/register', 'priority': '0.8', 'changefreq': 'monthly'},
+        {'url': '/my-bookings', 'priority': '0.9', 'changefreq': 'weekly'},
+    ]
+    
+    for page in pages:
+        sitemap_xml.append(f'  <url>')
+        sitemap_xml.append(f'    <loc>{base_url}{page["url"]}</loc>')
+        sitemap_xml.append(f'    <priority>{page["priority"]}</priority>')
+        sitemap_xml.append(f'    <changefreq>{page["changefreq"]}</changefreq>')
+        sitemap_xml.append(f'  </url>')
+    
+    # Add property pages
+    properties = Property.query.filter_by(is_active=True).all()
+    for property in properties:
+        sitemap_xml.append(f'  <url>')
+        sitemap_xml.append(f'    <loc>{base_url}/property/{property.id}</loc>')
+        sitemap_xml.append(f'    <priority>0.9</priority>')
+        sitemap_xml.append(f'    <changefreq>weekly</changefreq>')
+        if property.updated_at:
+            sitemap_xml.append(f'    <lastmod>{property.updated_at.strftime("%Y-%m-%d")}</lastmod>')
+        sitemap_xml.append(f'  </url>')
+    
+    sitemap_xml.append('</urlset>')
+    
+    return Response('\n'.join(sitemap_xml), mimetype='application/xml')
 
 def send_booking_final_confirmation_email(booking):
     """Отправляет email с финальным подтверждением бронирования"""
@@ -2268,18 +2331,30 @@ def get_dashboard_stats(start_date, end_date, user=None):
     total_bookings = base_query.count()
     pending_bookings = base_query.filter(Booking.status == 'pending').count()
     
-    # Revenue (confirmed + completed)
+    # Revenue calculations with separate tracking for different statuses
     revenue_query = db.session.query(db.func.sum(Booking.total_price)).filter(
         Booking.check_out >= start_date,
         Booking.check_in <= end_date
     )
     
+    # Выручка от подтвержденных бронирований (статусы confirmed и completed)
     confirmed_revenue = revenue_query.filter(
         Booking.status.in_(['confirmed', 'completed'])
     ).scalar() or 0
     
+    # Стоимость заявок (статус pending) - отображается в разделе "Заявки"
     pending_revenue = revenue_query.filter(
         Booking.status == 'pending'
+    ).scalar() or 0
+    
+    # Стоимость бронирований (статус confirmed) - отображается в разделе "Бронирование"
+    booking_revenue = revenue_query.filter(
+        Booking.status == 'confirmed'
+    ).scalar() or 0
+    
+    # Выручка от выполненных бронирований (статус completed) - отображается в разделе "Выручка"
+    completed_revenue = revenue_query.filter(
+        Booking.status == 'completed'
     ).scalar() or 0
     
     # Property count - filter by user access if not superadmin
@@ -2315,6 +2390,8 @@ def get_dashboard_stats(start_date, end_date, user=None):
         'pending_bookings': pending_bookings,
         'confirmed_revenue': confirmed_revenue,
         'pending_revenue': pending_revenue,
+        'booking_revenue': booking_revenue,
+        'completed_revenue': completed_revenue,
         'daily_registrations': daily_registrations,
         'daily_visitors': daily_visitors
     }

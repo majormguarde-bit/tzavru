@@ -178,6 +178,23 @@
                     <div>
                         <h6 class="text-muted mb-1">Заявки</h6>
                         <h3 class="mb-0 fw-bold" id="stat-pending-bookings">{{ stats.pending_bookings }}</h3>
+                        <small class="text-warning fw-bold">{{ stats.pending_revenue|format_price }} ₽</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card border-0 h-100 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="stat-icon bg-success text-white me-3">
+                        <i class="bi bi-calendar-check"></i>
+                    </div>
+                    <div>
+                        <h6 class="text-muted mb-1">Бронирование</h6>
+                        <h3 class="mb-0 fw-bold" id="stat-confirmed-bookings">{{ stats.total_bookings - stats.pending_bookings }}</h3>
+                        <small class="text-success fw-bold">{{ stats.booking_revenue|format_price }} ₽</small>
                     </div>
                 </div>
             </div>
@@ -193,11 +210,11 @@
                     <div>
                         <h6 class="text-muted mb-1">Выручка</h6>
                         <div class="d-flex flex-column">
-                            <span class="text-success fw-bold fs-5" title="Подтвержденные бронирования">
-                                <i class="bi bi-check-lg me-1"></i><span id="stat-confirmed-revenue">{{ stats.confirmed_revenue|format_price }}</span> ₽
+                            <span class="text-success fw-bold fs-5" title="Выполненные бронирования">
+                                <i class="bi bi-check-circle-fill me-1"></i><span id="stat-completed-revenue">{{ stats.completed_revenue|format_price }}</span> ₽
                             </span>
-                            <span class="text-warning fw-bold small" title="Ожидающие заявки">
-                                <i class="bi bi-hourglass-split me-1"></i><span id="stat-pending-revenue">{{ stats.pending_revenue|format_price }}</span> ₽
+                            <span class="text-info fw-bold small" title="Подтвержденные бронирования">
+                                <i class="bi bi-check-lg me-1"></i><span id="stat-booking-revenue">{{ stats.booking_revenue|format_price }}</span> ₽
                             </span>
                         </div>
                     </div>
