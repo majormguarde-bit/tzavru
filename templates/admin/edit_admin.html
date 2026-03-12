@@ -1,0 +1,116 @@
+{% extends "admin/layout.html" %}
+
+{% if admin_user %}
+    {% set page_title_text = "Редактирование админа: " ~ admin_user.username %}
+{% else %}
+    {% set page_title_text = "Добавление админа" %}
+{% endif %}
+
+{% block title %}{{ page_title_text }}{% endblock %}
+{% block page_title %}{{ page_title_text }}{% endblock %}
+
+{% block content %}
+<form method="POST">
+<div class="row g-4">
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" name="username" class="form-control" value="{{ admin_user.username if admin_user else '' }}" {% if admin_user %}readonly{% endif %} required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="email" class="form-control" value="{{ admin_user.email if admin_user else '' }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Телефон</label>
+                        <input type="text" name="phone" class="form-control" value="{{ admin_user.phone if admin_user else '' }}">
+                    </div>
+
+                    {% if admin_user %}
+                    <div class="mb-3">
+                        <label class="form-label">Новый пароль (опционально)</label>
+                        <input type="password" name="new_password" class="form-control">
+                    </div>
+                    {% else %}
+                    <div class="mb-3">
+                        <label class="form-label">Пароль</label>
+                        <input type="password" name="password" class="form-control" required>
+                    </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label class="form-label">Права на объекты</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="can_create_properties" id="can_create_properties"
+                                   {% if admin_user and admin_user.can_create_properties %}checked{% endif %}
+                                   {% if not admin_user %}checked{% endif %}>
+                            <label class="form-check-label" for="can_create_properties">Разрешить добавление</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="can_edit_properties" id="can_edit_properties"
+                                   {% if admin_user and admin_user.can_edit_properties %}checked{% endif %}
+                                   {% if not admin_user %}checked{% endif %}>
+                            <label class="form-check-label" for="can_edit_properties">Разрешить редактирование</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="can_delete_properties" id="can_delete_properties"
+                                   {% if admin_user and admin_user.can_delete_properties %}checked{% endif %}>
+                            <label class="form-check-label" for="can_delete_properties">Разрешить удаление</label>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save me-2"></i>Сохранить
+                        </button>
+                        <a href="{{ url_for('admin_admins') }}" class="btn btn-outline-secondary">Назад</a>
+                    </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Доступ к объектам</h5>
+                {% if not admin_user %}
+                    <p class="text-muted mb-0">Сначала создайте админа, затем можно выдать доступ к объектам.</p>
+                {% else %}
+                        <div class="table-responsive" style="max-height: 520px;">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 60px;">Доступ</th>
+                                        <th>Объект</th>
+                                        <th style="width: 120px;">ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for p in properties %}
+                                    <tr>
+                                        <td>
+                                            <input class="form-check-input" type="checkbox" name="property_access" value="{{ p.id }}"
+                                                   {% if p.id in existing_access_ids %}checked{% endif %}>
+                                        </td>
+                                        <td>{{ p.name }}</td>
+                                        <td class="text-muted">{{ p.id }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="3" class="text-center text-muted py-4">Объекты не найдены</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+</form>
+{% endblock %}

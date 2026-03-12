@@ -11,6 +11,10 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     phone = db.Column(db.String(20))
     is_admin = db.Column(db.Boolean, default=False)
+    is_superadmin = db.Column(db.Boolean, default=False)
+    can_create_properties = db.Column(db.Boolean, default=True)
+    can_edit_properties = db.Column(db.Boolean, default=True)
+    can_delete_properties = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class UnitType(db.Model):
@@ -55,6 +59,7 @@ class PropertyCharacteristic(db.Model):
 
 class Property(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
     name = db.Column(db.String(100), nullable=False)
     property_type = db.Column(db.String(50), nullable=False)
     short_description = db.Column(db.String(200), nullable=False)
@@ -74,6 +79,20 @@ class Property(db.Model):
     longitude = db.Column(db.Float)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    owner = db.relationship('User', backref=db.backref('owned_properties', lazy=True))
+
+class AdminPropertyAccess(db.Model):
+    __tablename__ = 'admin_property_access'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('property_access', lazy=True, cascade="all, delete-orphan"))
+    property = db.relationship('Property', backref=db.backref('admin_access', lazy=True, cascade="all, delete-orphan"))
+
+    __table_args__ = (db.UniqueConstraint('user_id', 'property_id', name='uq_admin_property_access_user_property'),)
 
 class Review(db.Model):
     id = db.Column(db.Integer, primary_key=True)

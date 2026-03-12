@@ -23,7 +23,7 @@ from email.header import decode_header
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-from sqlalchemy import inspect
+from sqlalchemy import inspect, or_
 import requests
 import io
 import random
@@ -72,7 +72,7 @@ app.config['SECRET_KEY'] = 'dev-secret-key-change-this-in-production'
 
 from models import db, User, UnitType, OptionType, CharacteristicType, PropertyOption, \
     PropertyCharacteristic, Property, Review, Booking, BookingDevice, BookingPasskey, \
-    BookingOption, ContactRequest, PropertyType, SiteSettings
+    BookingOption, ContactRequest, PropertyType, SiteSettings, AdminPropertyAccess
 
 # Initialize db with app
 db.init_app(app)
@@ -604,6 +604,10 @@ def inject_site_settings():
     except:
         return dict(site_settings=None, property_types=[], footer_properties=[])
 
+@app.context_processor
+def inject_current_admin():
+    return {'current_admin': get_current_admin()}
+
 # Простой декоратор для проверки авторизации
 def login_required(f):
     @wraps(f)
@@ -626,6 +630,46 @@ def admin_required(f):
             return redirect(url_for('index'))
         return f(*args, **kwargs)
     return decorated_function
+
+def superadmin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Требуется авторизация', 'error')
+            return redirect(url_for('login'))
+        user = User.query.get(session['user_id'])
+        if not user or not user.is_admin or not user.is_superadmin:
+            flash('Требуются права суперадминистратора', 'error')
+            return redirect(url_for('admin_dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def get_current_admin():
+    if 'user_id' not in session:
+        return None
+    return User.query.get(session['user_id'])
+
+def admin_can_access_property(user, property_obj):
+    if not user or not user.is_admin:
+        return False
+    if user.is_superadmin:
+        return True
+    if property_obj.owner_id and property_obj.owner_id == user.id:
+        return True
+    return AdminPropertyAccess.query.filter_by(user_id=user.id, property_id=property_obj.id).first() is not None
+
+def admin_can_create_property(user):
+    return bool(user and user.is_admin and (user.is_superadmin or user.can_create_properties))
+
+def admin_can_edit_property(user, property_obj):
+    return bool(user and user.is_admin and (user.is_superadmin or user.can_edit_properties) and admin_can_access_property(user, property_obj))
+
+def admin_can_delete_property(user, property_obj):
+    return bool(user and user.is_admin and (user.is_superadmin or user.can_delete_properties) and admin_can_access_property(user, property_obj))
+
+def admin_can_edit_reference_data(user):
+    """Проверяет, может ли пользователь редактировать справочные данные"""
+    return bool(user and user.is_admin and user.is_superadmin)
 
 @app.route('/')
 def index():
@@ -1614,12 +1658,26 @@ def contact():
     return render_template('base.html')
 
 # Admin routes
-def get_dashboard_stats(start_date, end_date):
+def get_dashboard_stats(start_date, end_date, user=None):
     # Base query for range overlap
     base_query = Booking.query.filter(
         Booking.check_out >= start_date,
         Booking.check_in <= end_date
     )
+    
+    # Filter by user's accessible properties if not superadmin
+    if user and not user.is_superadmin:
+        # Get accessible property IDs for the user
+        accessible_ids = db.session.query(AdminPropertyAccess.property_id).filter(AdminPropertyAccess.user_id == user.id).all()
+        accessible_ids = [pid[0] for pid in accessible_ids]
+        
+        # Filter bookings to only those for properties the user owns or has access to
+        base_query = base_query.filter(
+            or_(
+                Booking.property_id.in_(accessible_ids),
+                Booking.property.has(Property.owner_id == user.id)
+            )
+        )
     
     # Recent bookings for list (all in range, sorted by check-in desc)
     bookings_list = base_query.order_by(Booking.check_in.desc()).all()
@@ -1641,8 +1699,21 @@ def get_dashboard_stats(start_date, end_date):
         Booking.status == 'pending'
     ).scalar() or 0
     
+    # Property count - filter by user access if not superadmin
+    if user and not user.is_superadmin:
+        accessible_ids = db.session.query(AdminPropertyAccess.property_id).filter(AdminPropertyAccess.user_id == user.id).all()
+        accessible_ids = [pid[0] for pid in accessible_ids]
+        total_properties = Property.query.filter(
+            or_(
+                Property.id.in_(accessible_ids),
+                Property.owner_id == user.id
+            )
+        ).count()
+    else:
+        total_properties = Property.query.count()
+    
     stats = {
-        'total_properties': Property.query.count(),
+        'total_properties': total_properties,
         'total_bookings': total_bookings,
         'pending_bookings': pending_bookings,
         'confirmed_revenue': confirmed_revenue,
@@ -1652,7 +1723,7 @@ def get_dashboard_stats(start_date, end_date):
     return stats, bookings_list
 
 @app.route('/admin/api/dashboard-stats')
-@login_required
+@admin_required
 def admin_api_dashboard_stats():
     start_str = request.args.get('start')
     end_str = request.args.get('end')
@@ -1673,7 +1744,8 @@ def admin_api_dashboard_stats():
     except ValueError:
         return jsonify({'error': 'Invalid date format'}), 400
         
-    stats, bookings = get_dashboard_stats(start_date, end_date)
+    user = get_current_admin()
+    stats, bookings = get_dashboard_stats(start_date, end_date, user)
     
     bookings_json = []
     for b in bookings:
@@ -1719,7 +1791,8 @@ def admin_dashboard():
     _, last_day = calendar.monthrange(today.year, today.month)
     stats_end = today.replace(day=last_day)
     
-    stats, recent_bookings = get_dashboard_stats(stats_start, stats_end)
+    user = get_current_admin()
+    stats, recent_bookings = get_dashboard_stats(stats_start, stats_end, user)
     
     # Pending contacts
     pending_contacts = ContactRequest.query.filter_by(is_processed=False).count()
@@ -1775,10 +1848,17 @@ def login():
         user = User.query.filter_by(username=username).first()
         
         if user and check_password_hash(user.password_hash, password):
+            if not user.is_admin:
+                flash('Требуются права администратора', 'error')
+                return render_template('admin/login.html')
             # Простая сессия вместо Flask-Login
             session['user_id'] = user.id
             session['username'] = user.username
             session['is_admin'] = user.is_admin
+            session['is_superadmin'] = user.is_superadmin
+            session['can_create_properties'] = user.can_create_properties
+            session['can_edit_properties'] = user.can_edit_properties
+            session['can_delete_properties'] = user.can_delete_properties
             flash('Вход выполнен успешно', 'success')
             return redirect(url_for('admin_dashboard'))
         
@@ -1786,7 +1866,7 @@ def login():
     return render_template('admin/login.html')
 
 @app.route('/admin/profile', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_profile():
     user = User.query.get(session['user_id'])
     
@@ -1827,6 +1907,116 @@ def admin_profile():
             
     return render_template('admin/profile.html', user=user)
 
+@app.route('/admin/admins')
+@superadmin_required
+def admin_admins():
+    admins = User.query.filter_by(is_admin=True).order_by(User.id).all()
+    return render_template('admin/admins.html', admins=admins)
+
+@app.route('/admin/admins/add', methods=['GET', 'POST'])
+@superadmin_required
+def admin_admin_add():
+    if request.method == 'POST':
+        username = (request.form.get('username') or '').strip()
+        email = (request.form.get('email') or '').strip()
+        phone = (request.form.get('phone') or '').strip()
+        password = request.form.get('password') or ''
+        can_create_properties = 'can_create_properties' in request.form
+        can_edit_properties = 'can_edit_properties' in request.form
+        can_delete_properties = 'can_delete_properties' in request.form
+
+        if not username or not email or not password:
+            flash('Заполните username, email и пароль.', 'error')
+            return redirect(url_for('admin_admin_add'))
+
+        if User.query.filter_by(username=username).first():
+            flash('Такой username уже существует.', 'error')
+            return redirect(url_for('admin_admin_add'))
+
+        if User.query.filter_by(email=email).first():
+            flash('Такой email уже существует.', 'error')
+            return redirect(url_for('admin_admin_add'))
+
+        admin_user = User(
+            username=username,
+            email=email,
+            phone=phone,
+            password_hash=generate_password_hash(password),
+            is_admin=True,
+            is_superadmin=False,
+            can_create_properties=can_create_properties,
+            can_edit_properties=can_edit_properties,
+            can_delete_properties=can_delete_properties
+        )
+        db.session.add(admin_user)
+        db.session.commit()
+        flash('Администратор создан.', 'success')
+        return redirect(url_for('admin_admins'))
+
+    return render_template('admin/edit_admin.html')
+
+@app.route('/admin/admins/edit/<int:user_id>', methods=['GET', 'POST'])
+@superadmin_required
+def admin_admin_edit(user_id):
+    admin_user = User.query.get_or_404(user_id)
+    if not admin_user.is_admin:
+        flash('Пользователь не является администратором.', 'error')
+        return redirect(url_for('admin_admins'))
+
+    properties = Property.query.order_by(Property.name).all()
+    existing_access_ids = {row.property_id for row in AdminPropertyAccess.query.filter_by(user_id=admin_user.id).all()}
+
+    if request.method == 'POST':
+        email_val = (request.form.get('email') or '').strip()
+        phone_val = (request.form.get('phone') or '').strip()
+        new_password = request.form.get('new_password') or ''
+
+        if email_val and email_val != admin_user.email:
+            existing_user = User.query.filter_by(email=email_val).first()
+            if existing_user and existing_user.id != admin_user.id:
+                flash('Этот email уже используется другим пользователем.', 'error')
+                return redirect(url_for('admin_admin_edit', user_id=admin_user.id))
+            admin_user.email = email_val
+
+        admin_user.phone = phone_val
+        admin_user.can_create_properties = 'can_create_properties' in request.form
+        admin_user.can_edit_properties = 'can_edit_properties' in request.form
+        admin_user.can_delete_properties = 'can_delete_properties' in request.form
+
+        if new_password:
+            admin_user.password_hash = generate_password_hash(new_password)
+
+        selected_ids_raw = request.form.getlist('property_access')
+        selected_ids = set()
+        for v in selected_ids_raw:
+            try:
+                selected_ids.add(int(v))
+            except ValueError:
+                pass
+
+        to_add = selected_ids - existing_access_ids
+        to_delete = existing_access_ids - selected_ids
+
+        if to_delete:
+            AdminPropertyAccess.query.filter(
+                AdminPropertyAccess.user_id == admin_user.id,
+                AdminPropertyAccess.property_id.in_(to_delete)
+            ).delete(synchronize_session=False)
+
+        for pid in to_add:
+            db.session.add(AdminPropertyAccess(user_id=admin_user.id, property_id=pid))
+
+        db.session.commit()
+        flash('Права администратора обновлены.', 'success')
+        return redirect(url_for('admin_admin_edit', user_id=admin_user.id))
+
+    return render_template(
+        'admin/edit_admin.html',
+        admin_user=admin_user,
+        properties=properties,
+        existing_access_ids=existing_access_ids
+    )
+
 @app.route('/admin/logout')
 @login_required
 def logout():
@@ -1834,17 +2024,26 @@ def logout():
     return redirect(url_for('index'))
 
 @app.route('/admin/properties')
-@login_required
+@admin_required
 def admin_properties():
-    properties = Property.query.all()
+    user = get_current_admin()
+    if user and user.is_superadmin:
+        properties = Property.query.all()
+    else:
+        accessible_ids = db.session.query(AdminPropertyAccess.property_id).filter(AdminPropertyAccess.user_id == session.get('user_id'))
+        properties = Property.query.filter(or_(Property.owner_id == session.get('user_id'), Property.id.in_(accessible_ids))).all()
     # Create a mapping of slug -> name for property types
     types = PropertyType.query.all()
     type_map = {t.slug: t.name for t in types}
     return render_template('admin/properties.html', properties=properties, type_map=type_map)
 
 @app.route('/admin/properties/add', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def add_property():
+    user = get_current_admin()
+    if not admin_can_create_property(user):
+        flash('Недостаточно прав для добавления объектов.', 'error')
+        return redirect(url_for('admin_properties'))
     if request.method == 'POST':
         # Преобразуем amenities и features в JSON
         amenities = request.form.get('amenities', '').strip().split('\n')
@@ -1917,6 +2116,7 @@ def add_property():
                     local_video_urls.append(url_for('static', filename=f'uploads/{filename}'))
 
         property = Property(
+            owner_id=user.id if user else None,
             name=request.form['name'],
             property_type=prop_slug,
             short_description=request.form['short_description'],
@@ -1968,10 +2168,20 @@ def add_property():
     return render_template('admin/edit_property.html', unique_types=unique_types, current_type_name=current_type_name, all_options=all_options, all_characteristics=all_characteristics, property_characteristics={}, selected_option_ids=[])
 
 @app.route('/admin/properties/edit/<int:property_id>', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_property_edit(property_id):
     property = Property.query.get_or_404(property_id)
+    user = get_current_admin()
+    if not admin_can_access_property(user, property):
+        flash('Недостаточно прав для доступа к объекту.', 'error')
+        return redirect(url_for('admin_properties'))
+    if request.method != 'POST' and not admin_can_edit_property(user, property):
+        flash('Недостаточно прав для редактирования объекта.', 'error')
+        return redirect(url_for('admin_properties'))
     if request.method == 'POST':
+        if not admin_can_edit_property(user, property):
+            flash('Недостаточно прав для редактирования объекта.', 'error')
+            return redirect(url_for('admin_properties'))
         property.name = request.form['name']
         
         # Check/Add Property Type
@@ -2135,16 +2345,20 @@ def admin_property_edit(property_id):
     return render_template('admin/edit_property.html', property=property, unique_types=unique_types, current_type_name=current_type_name, all_options=all_options, all_characteristics=all_characteristics, property_characteristics=property_characteristics, selected_option_ids=selected_option_ids)
 
 @app.route('/admin/properties/delete/<int:property_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_property_delete(property_id):
     property = Property.query.get_or_404(property_id)
+    user = get_current_admin()
+    if not admin_can_delete_property(user, property):
+        flash('Недостаточно прав для удаления объекта.', 'error')
+        return redirect(url_for('admin_properties'))
     db.session.delete(property)
     db.session.commit()
     flash('Объект удален', 'success')
     return redirect(url_for('admin_properties'))
 
 @app.route('/admin/bookings')
-@login_required
+@admin_required
 def admin_bookings():
     status = request.args.get('status', 'all')
     if status == 'all':
@@ -2154,7 +2368,7 @@ def admin_bookings():
     return render_template('admin/bookings.html', bookings=bookings, status_filter=status)
 
 @app.route('/admin/bookings/confirm/<int:booking_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_booking_confirm(booking_id):
     booking = Booking.query.get_or_404(booking_id)
     booking.status = 'confirmed'
@@ -2167,7 +2381,7 @@ def admin_booking_confirm(booking_id):
     return redirect(url_for('admin_bookings'))
 
 @app.route('/admin/bookings/cancel/<int:booking_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_booking_cancel(booking_id):
     booking = Booking.query.get_or_404(booking_id)
     booking.status = 'cancelled'
@@ -2180,7 +2394,7 @@ def admin_booking_cancel(booking_id):
     return redirect(url_for('admin_bookings'))
 
 @app.route('/admin/bookings/add', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_booking_add():
     if request.method == 'POST':
         try:
@@ -2228,7 +2442,7 @@ def admin_booking_add():
     return render_template('admin/edit_booking.html', properties=properties)
 
 @app.route('/admin/bookings/edit/<int:booking_id>', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_booking_edit(booking_id):
     booking = Booking.query.get_or_404(booking_id)
     
@@ -2310,7 +2524,7 @@ def admin_booking_edit(booking_id):
     return render_template('admin/edit_booking.html', booking=booking, properties=properties)
 
 @app.route('/admin/bookings/send-info/<int:booking_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_booking_send_info(booking_id):
     booking = Booking.query.get_or_404(booking_id)
     try:
@@ -2328,7 +2542,7 @@ def admin_booking_send_info(booking_id):
     return redirect(url_for('admin_booking_edit', booking_id=booking.id))
 
 @app.route('/admin/bookings/send-push/<int:booking_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_booking_send_push(booking_id):
     booking = Booking.query.get_or_404(booking_id)
     settings = SiteSettings.query.first()
@@ -2343,7 +2557,7 @@ def admin_booking_send_push(booking_id):
     return redirect(url_for('admin_booking_edit', booking_id=booking.id))
 
 @app.route('/admin/bookings/unbind-passkey/<int:passkey_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_booking_unbind_passkey(passkey_id):
     try:
         passkey = BookingPasskey.query.get_or_404(passkey_id)
@@ -2362,7 +2576,7 @@ def admin_booking_unbind_passkey(passkey_id):
             return redirect(url_for('admin_bookings'))
 
 @app.route('/admin/bookings/delete/<int:booking_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_booking_delete(booking_id):
     try:
         booking = Booking.query.get_or_404(booking_id)
@@ -2414,13 +2628,13 @@ def admin_booking_delete(booking_id):
     return redirect(url_for('admin_bookings'))
 
 @app.route('/admin/reviews')
-@login_required
+@admin_required
 def admin_reviews():
     reviews = Review.query.order_by(Review.created_at.desc()).all()
     return render_template('admin/reviews.html', reviews=reviews)
 
 @app.route('/admin/reviews/add', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_review_add():
     if request.method == 'POST':
         title = request.form.get('title', '')
@@ -2456,7 +2670,7 @@ def admin_review_add():
     return render_template('admin/review_form.html')
 
 @app.route('/admin/reviews/edit/<int:id>', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_review_edit(id):
     review = Review.query.get_or_404(id)
     if request.method == 'POST':
@@ -2482,7 +2696,7 @@ def admin_review_edit(id):
     return render_template('admin/review_form.html', review=review)
 
 @app.route('/admin/reviews/delete/<int:id>')
-@login_required
+@admin_required
 def admin_review_delete(id):
     review = Review.query.get_or_404(id)
     db.session.delete(review)
@@ -2491,7 +2705,7 @@ def admin_review_delete(id):
     return redirect(url_for('admin_reviews'))
 
 @app.route('/admin/contacts')
-@login_required
+@admin_required
 def admin_contacts():
     status = request.args.get('status', 'all')
     if status == 'processed':
@@ -2503,7 +2717,7 @@ def admin_contacts():
     return render_template('admin/contacts.html', requests=requests, status_filter=status)
 
 @app.route('/admin/contacts/process/<int:request_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_contact_process(request_id):
     req = ContactRequest.query.get_or_404(request_id)
     req.is_processed = True
@@ -2515,7 +2729,7 @@ from PIL import Image
 import io
 
 @app.route('/admin/settings', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_settings():
     settings = SiteSettings.query.first()
     if not settings:
@@ -2597,7 +2811,7 @@ def admin_settings():
     return render_template('admin/settings.html', settings=settings)
 
 @app.route('/admin/settings/test-email', methods=['POST'])
-@login_required
+@admin_required
 def admin_test_email():
     email = request.form.get('test_email')
     if not email:
@@ -2621,7 +2835,7 @@ def admin_test_email():
     return redirect(url_for('admin_settings'))
 
 @app.route('/admin/settings/check-mail', methods=['POST'])
-@login_required
+@admin_required
 def admin_check_mail():
     try:
         settings = SiteSettings.query.first()
@@ -2641,8 +2855,7 @@ def admin_check_mail():
     return redirect(url_for('admin_settings'))
 
 @app.route('/admin/settings/reset-db', methods=['POST'])
-@login_required
-@admin_required
+@superadmin_required
 def admin_reset_db():
     if request.form.get('confirm') != 'yes':
         flash('Для сброса базы данных необходимо подтверждение.', 'error')
@@ -2669,7 +2882,8 @@ def admin_reset_db():
             username='admin',
             email='admin@example.com',
             password_hash=generate_password_hash('admin123'),
-            is_admin=True
+            is_admin=True,
+            is_superadmin=True
         )
         db.session.add(admin)
         
@@ -2692,13 +2906,13 @@ def admin_reset_db():
         return redirect(url_for('admin_settings'))
 
 @app.route('/admin/dictionaries/property-types')
-@login_required
+@admin_required
 def admin_property_types():
     types = PropertyType.query.order_by(PropertyType.name).all()
     return render_template('admin/property_types.html', types=types)
 
 @app.route('/admin/dictionaries/property-types/add', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_property_type_add():
     if request.method == 'POST':
         name = request.form['name']
@@ -2717,8 +2931,12 @@ def admin_property_type_add():
     return render_template('admin/edit_property_type.html')
 
 @app.route('/admin/dictionaries/property-types/edit/<int:type_id>', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_property_type_edit(type_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для редактирования справочных данных', 'error')
+        return redirect(url_for('admin_property_types'))
     ptype = PropertyType.query.get_or_404(type_id)
     if request.method == 'POST':
         ptype.name = request.form['name']
@@ -2737,8 +2955,12 @@ def admin_property_type_edit(type_id):
     return render_template('admin/edit_property_type.html', ptype=ptype)
 
 @app.route('/admin/dictionaries/property-types/delete/<int:type_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_property_type_delete(type_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для удаления справочных данных', 'error')
+        return redirect(url_for('admin_property_types'))
     ptype = PropertyType.query.get_or_404(type_id)
     db.session.delete(ptype)
     db.session.commit()
@@ -2747,13 +2969,13 @@ def admin_property_type_delete(type_id):
 
 # --- Characteristics ---
 @app.route('/admin/dictionaries/characteristics')
-@login_required
+@admin_required
 def admin_characteristics():
     items = CharacteristicType.query.order_by(CharacteristicType.name).all()
     return render_template('admin/characteristics.html', items=items)
 
 @app.route('/admin/dictionaries/characteristics/add', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_characteristic_add():
     units = UnitType.query.order_by(UnitType.name).all()
     if request.method == 'POST':
@@ -2777,8 +2999,12 @@ def admin_characteristic_add():
     return render_template('admin/edit_characteristic.html', units=units)
 
 @app.route('/admin/dictionaries/characteristics/edit/<int:item_id>', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_characteristic_edit(item_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для редактирования справочных данных', 'error')
+        return redirect(url_for('admin_characteristics'))
     item = CharacteristicType.query.get_or_404(item_id)
     units = UnitType.query.order_by(UnitType.name).all()
     if request.method == 'POST':
@@ -2800,8 +3026,12 @@ def admin_characteristic_edit(item_id):
     return render_template('admin/edit_characteristic.html', item=item, units=units)
 
 @app.route('/admin/dictionaries/characteristics/delete/<int:item_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_characteristic_delete(item_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для удаления справочных данных', 'error')
+        return redirect(url_for('admin_characteristics'))
     item = CharacteristicType.query.get_or_404(item_id)
     db.session.delete(item)
     db.session.commit()
@@ -2810,13 +3040,13 @@ def admin_characteristic_delete(item_id):
 
 # --- Units ---
 @app.route('/admin/dictionaries/units')
-@login_required
+@admin_required
 def admin_units():
     items = UnitType.query.order_by(UnitType.name).all()
     return render_template('admin/units.html', items=items)
 
 @app.route('/admin/dictionaries/units/add', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_unit_add():
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
@@ -2831,8 +3061,12 @@ def admin_unit_add():
     return render_template('admin/edit_unit.html')
 
 @app.route('/admin/dictionaries/units/edit/<int:item_id>', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_unit_edit(item_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для редактирования справочных данных', 'error')
+        return redirect(url_for('admin_units'))
     item = UnitType.query.get_or_404(item_id)
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
@@ -2849,8 +3083,12 @@ def admin_unit_edit(item_id):
     return render_template('admin/edit_unit.html', item=item)
 
 @app.route('/admin/dictionaries/units/delete/<int:item_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_unit_delete(item_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для удаления справочных данных', 'error')
+        return redirect(url_for('admin_units'))
     item = UnitType.query.get_or_404(item_id)
     if item.options or item.characteristics:
         flash('Нельзя удалить единицу измерения, она используется в справочниках', 'error')
@@ -2862,13 +3100,13 @@ def admin_unit_delete(item_id):
 
 # --- Options ---
 @app.route('/admin/dictionaries/options')
-@login_required
+@admin_required
 def admin_options():
     items = OptionType.query.order_by(OptionType.name).all()
     return render_template('admin/options.html', items=items)
 
 @app.route('/admin/dictionaries/options/add', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_option_add():
     units = UnitType.query.order_by(UnitType.name).all()
     if request.method == 'POST':
@@ -2893,8 +3131,12 @@ def admin_option_add():
     return render_template('admin/edit_option.html', units=units)
 
 @app.route('/admin/dictionaries/options/edit/<int:item_id>', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def admin_option_edit(item_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для редактирования справочных данных', 'error')
+        return redirect(url_for('admin_options'))
     item = OptionType.query.get_or_404(item_id)
     units = UnitType.query.order_by(UnitType.name).all()
     if request.method == 'POST':
@@ -2921,8 +3163,12 @@ def admin_option_edit(item_id):
     return render_template('admin/edit_option.html', item=item, units=units)
 
 @app.route('/admin/dictionaries/options/delete/<int:item_id>', methods=['POST'])
-@login_required
+@admin_required
 def admin_option_delete(item_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для удаления справочных данных', 'error')
+        return redirect(url_for('admin_options'))
     item = OptionType.query.get_or_404(item_id)
     PropertyOption.query.filter_by(option_type_id=item_id).delete(synchronize_session=False)
     BookingOption.query.filter_by(option_type_id=item_id).update(
@@ -2962,7 +3208,8 @@ if __name__ == '__main__':
                 username='admin',
                 email='admin@example.com',
                 password_hash=generate_password_hash('admin123'),
-                is_admin=True
+                is_admin=True,
+                is_superadmin=True
             )
             db.session.add(admin)
             

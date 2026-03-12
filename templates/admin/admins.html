@@ -1,0 +1,64 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}Админы{% endblock %}
+{% block page_title %}Админы{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="text-muted">Всего: {{ admins|length }}</div>
+    <a href="{{ url_for('admin_admin_add') }}" class="btn btn-primary">
+        <i class="bi bi-person-plus me-2"></i>Добавить админа
+    </a>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 70px;">ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th style="width: 140px;">Роль</th>
+                        <th style="width: 260px;">Права</th>
+                        <th class="text-end" style="width: 140px;">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in admins %}
+                    <tr>
+                        <td>{{ u.id }}</td>
+                        <td><strong>{{ u.username }}</strong></td>
+                        <td>{{ u.email }}</td>
+                        <td>
+                            {% if u.is_superadmin %}
+                                <span class="badge bg-warning text-dark">Суперадмин</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Админ</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small">
+                            Создание: {{ 'да' if u.can_create_properties else 'нет' }},
+                            Редактирование: {{ 'да' if u.can_edit_properties else 'нет' }},
+                            Удаление: {{ 'да' if u.can_delete_properties else 'нет' }}
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_admin_edit', user_id=u.id) }}">
+                                <i class="bi bi-sliders"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-5">
+                            Админы не найдены
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

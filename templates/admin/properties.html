@@ -7,9 +7,11 @@
     <div>
         <p class="text-muted mb-0">Всего объектов: {{ properties|length }}</p>
     </div>
+    {% if current_admin and (current_admin.is_superadmin or current_admin.can_create_properties) %}
     <a href="{{ url_for('add_property') }}" class="btn btn-primary">
         <i class="bi bi-plus-circle me-2"></i> Добавить объект
     </a>
+    {% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -79,10 +81,13 @@
                                    class="btn btn-sm btn-outline-info" title="Просмотр" target="_blank">
                                     <i class="bi bi-eye"></i>
                                 </a>
+                                {% if current_admin and (current_admin.is_superadmin or current_admin.can_edit_properties) %}
                                 <a href="{{ url_for('admin_property_edit', property_id=property.id) }}" 
                                    class="btn btn-sm btn-outline-primary" title="Редактировать">
                                     <i class="bi bi-pencil"></i>
                                 </a>
+                                {% endif %}
+                                {% if current_admin and (current_admin.is_superadmin or current_admin.can_delete_properties) %}
                                 <form action="{{ url_for('admin_property_delete', property_id=property.id) }}" 
                                       method="POST" style="display: inline;"
                                       onsubmit="return confirm('Вы уверены?');">
@@ -90,6 +95,7 @@
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </form>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>
