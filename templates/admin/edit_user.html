@@ -1,0 +1,143 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}Редактирование пользователя - {{ user.username }}{% endblock %}
+{% block page_title %}Редактирование пользователя{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin_user_edit', user_id=user.id) }}">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" name="username" value="{{ user.username }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">Телефон</label>
+                        <input type="tel" class="form-control" id="phone" name="phone" value="{{ user.phone or '' }}">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="is_email_verified" name="is_email_verified" {% if user.is_email_verified %}checked{% endif %}>
+                            <label class="form-check-label" for="is_email_verified">Email подтвержден</label>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="is_active" name="is_active" {% if user.is_active %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active">Аккаунт активен</label>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                        <a href="{{ url_for('admin_users') }}" class="btn btn-outline-secondary">Отмена</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h6 class="card-title">Информация о пользователе</h6>
+                
+                <div class="mb-2">
+                    <small class="text-muted">ID:</small>
+                    <div class="fw-medium">#{{ user.id }}</div>
+                </div>
+                
+                <div class="mb-2">
+                    <small class="text-muted">Дата регистрации:</small>
+                    <div class="fw-medium">{{ user.created_at.strftime('%d.%m.%Y %H:%M') }}</div>
+                </div>
+                
+                <div class="mb-2">
+                    <small class="text-muted">Последний вход:</small>
+                    <div class="fw-medium">
+                        {% if user.last_login_at %}
+                            {{ user.last_login_at.strftime('%d.%m.%Y %H:%M') }}
+                        {% else %}
+                            <span class="text-muted">Никогда</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="mb-2">
+                    <small class="text-muted">Статус:</small>
+                    <div>
+                        {% if user.is_email_verified %}
+                            <span class="badge bg-success">Email подтвержден</span>
+                        {% else %}
+                            <span class="badge bg-warning">Email не подтвержден</span>
+                        {% endif %}
+                        
+                        {% if user.is_active %}
+                            <span class="badge bg-info">Активен</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Заблокирован</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="mb-2">
+                    <small class="text-muted">Роли:</small>
+                    <div>
+                        {% if user.is_superadmin %}
+                            <span class="badge bg-danger">Суперадмин</span>
+                        {% elif user.is_admin %}
+                            <span class="badge bg-primary">Админ</span>
+                        {% else %}
+                            <span class="badge bg-success">Пользователь</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Быстрые действия -->
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-body">
+                <h6 class="card-title">Быстрые действия</h6>
+                
+                <div class="d-grid gap-2">
+                    {% if not user.is_email_verified %}
+                    <form method="POST" action="{{ url_for('admin_user_verify_email', user_id=user.id) }}" class="d-grid">
+                        <button type="submit" class="btn btn-outline-success btn-sm">
+                            <i class="bi bi-check-circle"></i> Подтвердить email
+                        </button>
+                    </form>
+                    {% endif %}
+                    
+                    <form method="POST" action="{{ url_for('admin_user_toggle_active', user_id=user.id) }}" class="d-grid">
+                        <button type="submit" class="btn {% if user.is_active %}btn-outline-warning{% else %}btn-outline-success{% endif %} btn-sm">
+                            <i class="bi {% if user.is_active %}bi-lock{% else %}bi-unlock{% endif %}"></i>
+                            {% if user.is_active %}Заблокировать{% else %}Разблокировать{% endif %}
+                        </button>
+                    </form>
+                    
+                    {% if not user.is_admin and not user.is_superadmin %}
+                    <form method="POST" action="{{ url_for('admin_user_delete', user_id=user.id) }}" 
+                          onsubmit="return confirm('Вы уверены, что хотите удалить этого пользователя?');"
+                          class="d-grid">
+                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-trash"></i> Удалить пользователя
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

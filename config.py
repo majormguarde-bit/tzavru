@@ -36,3 +36,10 @@ class Config:
     WEBAUTHN_RP_ID = os.environ.get('WEBAUTHN_RP_ID')
     WEBAUTHN_RP_NAME = os.environ.get('WEBAUTHN_RP_NAME', 'Imperial Collection')
     WEBAUTHN_ORIGIN = os.environ.get('WEBAUTHN_ORIGIN')
+    
+    # Email settings
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT', 587))
+    MAIL_USE_TLS = True
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')

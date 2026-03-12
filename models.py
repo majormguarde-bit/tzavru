@@ -19,6 +19,7 @@ class User(UserMixin, db.Model):
     is_email_verified = db.Column(db.Boolean, default=False)
     email_verification_token = db.Column(db.String(100))
     email_verification_sent_at = db.Column(db.DateTime)
+    last_login_at = db.Column(db.DateTime)
 
 class UnitType(db.Model):
     id = db.Column(db.Integer, primary_key=True)

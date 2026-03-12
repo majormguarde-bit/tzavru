@@ -254,15 +254,21 @@
                             <div class="small text-light opacity-75">Цена за ночь</div>
                             <div class="fw-bold text-white h4 mb-0">{{ property.price_per_night|format_price }} ₽</div>
                         </div>
-                        <a href="{{ site_settings.social_telegram if site_settings and site_settings.social_telegram else 'https://t.me/imperial_village' }}" target="_blank" class="btn d-flex align-items-center justify-content-center shadow-lg rounded-3" style="width: 55px; height: 55px; padding: 0; background-color: #229ED9; border-color: #229ED9; color: white;">
-                            <i class="bi bi-telegram" style="font-size: 2.5rem;"></i>
-                        </a>
+                        {% if not current_user_obj or (current_user_obj and not current_user_obj.is_email_verified) %}
+                        <button class="btn btn-secondary d-none d-md-inline-block px-5 btn-lg shadow-lg" disabled>
+                            {% if not current_user_obj %}Войдите для бронирования{% else %}Подтвердите email{% endif %}
+                        </button>
+                        <button class="btn btn-secondary d-md-none rounded-circle d-flex align-items-center justify-content-center shadow-lg" style="width: 55px; height: 55px; padding: 0;" disabled>
+                            <i class="bi bi-{% if not current_user_obj %}person-exclamation{% else %}envelope-exclamation{% endif %} fs-4"></i>
+                        </button>
+                        {% else %}
                         <a href="{{ url_for('booking', property_id=property.id) }}" class="btn btn-primary d-none d-md-inline-block px-5 btn-lg pulse-yellow-filled shadow-lg">
                             Забронировать
                         </a>
                         <a href="{{ url_for('booking', property_id=property.id) }}" class="btn btn-primary d-md-none rounded-circle d-flex align-items-center justify-content-center pulse-yellow-filled shadow-lg" style="width: 55px; height: 55px; padding: 0;">
                             <i class="bi bi-calendar-check fs-4"></i>
                         </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>

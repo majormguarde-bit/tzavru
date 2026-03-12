@@ -6,6 +6,28 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div class="text-muted">Всего: {{ users|length }}</div>
+    
+    <!-- Форма поиска и фильтрации -->
+    <form method="GET" action="{{ url_for('admin_users') }}" class="d-flex gap-2">
+        <div class="input-group input-group-sm" style="width: 250px;">
+            <input type="text" name="search" class="form-control" placeholder="Поиск по username или email" value="{{ request.args.get('search', '') }}">
+            <button class="btn btn-outline-secondary" type="submit">
+                <i class="bi bi-search"></i>
+            </button>
+        </div>
+        
+        <select name="status" class="form-select form-select-sm" style="width: 150px;">
+            <option value="">Все статусы</option>
+            <option value="verified" {% if request.args.get('status') == 'verified' %}selected{% endif %}>Подтвержденные</option>
+            <option value="unverified" {% if request.args.get('status') == 'unverified' %}selected{% endif %}>Не подтвержденные</option>
+        </select>
+        
+        {% if request.args.get('search') or request.args.get('status') %}
+        <a href="{{ url_for('admin_users') }}" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-x-lg"></i> Сбросить
+        </a>
+        {% endif %}
+    </form>
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -15,11 +37,11 @@
                 <thead class="table-light">
                     <tr>
                         <th style="width: 70px;">ID</th>
-                        <th>Username</th>
-                        <th>Email</th>
-                        <th>Телефон</th>
-                        <th style="width: 140px;">Статус email</th>
+                        <th>Пользователь</th>
+                        <th>Контактная информация</th>
+                        <th style="width: 120px;">Статус</th>
                         <th style="width: 140px;">Дата регистрации</th>
+                        <th style="width: 140px;">Последняя активность</th>
                         <th class="text-end" style="width: 100px;">Действия</th>
                     </tr>
                 </thead>
@@ -29,26 +51,76 @@
                         <td class="text-muted">#{{ u.id }}</td>
                         <td>
                             <div class="fw-medium">{{ u.username }}</div>
+                            <div class="text-muted small">
+                                {% if u.is_admin %}
+                                    <span class="badge bg-primary">Админ</span>
+                                {% endif %}
+                                {% if u.is_superadmin %}
+                                    <span class="badge bg-danger">Суперадмин</span>
+                                {% endif %}
+                            </div>
                         </td>
-                        <td>{{ u.email }}</td>
-                        <td>{{ u.phone or '-' }}</td>
+                        <td>
+                            <div class="fw-medium">{{ u.email }}</div>
+                            <div class="text-muted small">{{ u.phone or 'Телефон не указан' }}</div>
+                        </td>
                         <td>
                             {% if u.is_email_verified %}
-                                <span class="badge bg-success">Подтвержден</span>
+                                <span class="badge bg-success"><i class="bi bi-check-circle"></i> Подтвержден</span>
                             {% else %}
-                                <span class="badge bg-warning">Не подтвержден</span>
+                                <span class="badge bg-warning"><i class="bi bi-exclamation-triangle"></i> Не подтвержден</span>
+                            {% endif %}
+                            {% if u.is_active %}
+                                <span class="badge bg-info mt-1"><i class="bi bi-person-check"></i> Активен</span>
+                            {% else %}
+                                <span class="badge bg-secondary mt-1"><i class="bi bi-person-x"></i> Неактивен</span>
                             {% endif %}
                         </td>
                         <td class="text-muted small">
-                            {{ u.created_at.strftime('%d.%m.%Y %H:%M') }}
+                            {{ u.created_at.strftime('%d.%m.%Y') }}
+                            <div class="text-muted" style="font-size: 0.8em;">
+                                {{ u.created_at.strftime('%H:%M') }}
+                            </div>
+                        </td>
+                        <td class="text-muted small">
+                            {% if u.last_login_at %}
+                                {{ u.last_login_at.strftime('%d.%m.%Y') }}
+                                <div class="text-muted" style="font-size: 0.8em;">
+                                    {{ u.last_login_at.strftime('%H:%M') }}
+                                </div>
+                            {% else %}
+                                <span class="text-muted">Никогда</span>
+                            {% endif %}
                         </td>
                         <td class="text-end">
-                            {% if current_user.is_superadmin %}
-                            <form action="{{ url_for('admin_user_delete', user_id=u.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Вы уверены, что хотите удалить этого пользователя?');">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </form>
+                            {% if current_admin.is_superadmin %}
+                            <div class="btn-group btn-group-sm" role="group">
+                                <a href="{{ url_for('admin_user_edit', user_id=u.id) }}" class="btn btn-outline-primary" data-bs-toggle="tooltip" title="Редактировать">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                
+                                {% if not u.is_email_verified %}
+                                <form action="{{ url_for('admin_user_verify_email', user_id=u.id) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-success" data-bs-toggle="tooltip" title="Подтвердить email">
+                                        <i class="bi bi-check-circle"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                                
+                                <form action="{{ url_for('admin_user_toggle_active', user_id=u.id) }}" method="POST" class="d-inline">
+                                    <button type="submit" class="btn {% if u.is_active %}btn-outline-warning{% else %}btn-outline-info{% endif %}" data-bs-toggle="tooltip" title="{% if u.is_active %}Заблокировать{% else %}Разблокировать{% endif %}">
+                                        <i class="bi {% if u.is_active %}bi-lock{% else %}bi-unlock{% endif %}"></i>
+                                    </button>
+                                </form>
+                                
+                                {% if not u.is_admin and not u.is_superadmin %}
+                                <form action="{{ url_for('admin_user_delete', user_id=u.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Вы уверены, что хотите удалить этого пользователя?');">
+                                    <button type="submit" class="btn btn-outline-danger" data-bs-toggle="tooltip" title="Удалить">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
                             {% endif %}
                         </td>
                     </tr>
@@ -64,4 +136,16 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Инициализация tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle=tooltip]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    })
+})
+</script>
 {% endblock %}

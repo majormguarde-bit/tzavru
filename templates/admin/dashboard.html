@@ -39,6 +39,13 @@
                     const pendingRevenueEl = document.getElementById('stat-pending-revenue');
                     if (pendingRevenueEl) pendingRevenueEl.textContent = new Intl.NumberFormat('ru-RU').format(data.stats.pending_revenue);
                     
+                    // Update Registration/Visitor Stats
+                    const dailyRegistrationsEl = document.getElementById('stat-daily-registrations');
+                    if (dailyRegistrationsEl) dailyRegistrationsEl.textContent = data.stats.daily_registrations;
+                    
+                    const dailyVisitorsEl = document.getElementById('stat-daily-visitors');
+                    if (dailyVisitorsEl) dailyVisitorsEl.textContent = data.stats.daily_visitors;
+                    
                     // Update Table
                     const tbody = document.getElementById('bookings-table-body');
                     if (tbody) {
@@ -193,6 +200,39 @@
                                 <i class="bi bi-hourglass-split me-1"></i><span id="stat-pending-revenue">{{ stats.pending_revenue|format_price }}</span> ₽
                             </span>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Registration/Visitor Stats -->
+    <div class="col-md-3">
+        <div class="card stat-card border-0 h-100 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="stat-icon bg-purple text-white me-3">
+                        <i class="bi bi-person-plus"></i>
+                    </div>
+                    <div>
+                        <h6 class="text-muted mb-1">Регистраций</h6>
+                        <h3 class="mb-0 fw-bold" id="stat-daily-registrations">{{ stats.daily_registrations }}</h3>
+                        <small class="text-muted">за 24 часа</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card border-0 h-100 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="stat-icon bg-orange text-white me-3">
+                        <i class="bi bi-people"></i>
+                    </div>
+                    <div>
+                        <h6 class="text-muted mb-1">Посетителей</h6>
+                        <h3 class="mb-0 fw-bold" id="stat-daily-visitors">{{ stats.daily_visitors }}</h3>
+                        <small class="text-muted">за 24 часа</small>
                     </div>
                 </div>
             </div>

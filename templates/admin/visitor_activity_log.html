@@ -1,7 +1,7 @@
 {% extends "admin/layout.html" %}
 
-{% block title %}Журнал активности администраторов{% endblock %}
-{% block page_title %}Журнал активности администраторов{% endblock %}
+{% block title %}Журнал активности посетителей{% endblock %}
+{% block page_title %}Журнал активности посетителей{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -9,7 +9,7 @@
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-body">
                 <h5 class="card-title mb-3">
-                    <i class="bi bi-clock-history me-2"></i>История действий
+                    <i class="bi bi-clock-history me-2"></i>История действий посетителей
                 </h5>
                 
                 <!-- Форма фильтрации -->
@@ -29,7 +29,10 @@
                                 <select class="form-select form-select-sm" id="action_type" name="action_type">
                                     <option value="">Все действия</option>
                                     <option value="login" {% if selected_action == 'login' %}selected{% endif %}>Вход</option>
-                                    <option value="logout" {% if selected_action == 'logout' %}selected{% endif %}>Выход</option>
+                                    <option value="booking_created" {% if selected_action == 'booking_created' %}selected{% endif %}>Создание брони</option>
+                                    <option value="booking_confirmed" {% if selected_action == 'booking_confirmed' %}selected{% endif %}>Подтверждение брони</option>
+                                    <option value="booking_cancelled" {% if selected_action == 'booking_cancelled' %}selected{% endif %}>Отмена брони</option>
+                                    <option value="email_verified" {% if selected_action == 'email_verified' %}selected{% endif %}>Подтверждение email</option>
                                 </select>
                             </div>
                             <div class="col-md-3">
@@ -37,7 +40,7 @@
                                     <i class="bi bi-funnel"></i> Применить
                                 </button>
                                 {% if start_date or end_date or selected_action %}
-                                <a href="{{ url_for('admin_activity_log') }}" class="btn btn-outline-secondary btn-sm mt-3 ms-1">
+                                <a href="{{ url_for('admin_visitor_activity_log') }}" class="btn btn-outline-secondary btn-sm mt-3 ms-1">
                                     <i class="bi bi-x-circle"></i> Сбросить
                                 </a>
                                 {% endif %}
@@ -51,8 +54,9 @@
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 150px;">Дата/время</th>
-                                <th>Администратор</th>
+                                <th>Пользователь</th>
                                 <th>Действие</th>
+                                <th>Описание</th>
                                 <th>IP адрес</th>
                             </tr>
                         </thead>
@@ -63,9 +67,11 @@
                                     {{ activity.created_at.strftime('%d.%m.%Y %H:%M:%S') }}
                                 </td>
                                 <td>
-                                    <strong>{{ activity.user.username }}</strong>
-                                    {% if activity.user.is_superadmin %}
-                                        <span class="badge bg-warning text-dark ms-1">суперадмин</span>
+                                    {% if activity.user %}
+                                        <strong>{{ activity.user.username }}</strong>
+                                        <div class="text-muted small">{{ activity.user.email }}</div>
+                                    {% else %}
+                                        <span class="text-muted">Гость</span>
                                     {% endif %}
                                 </td>
                                 <td>
@@ -73,19 +79,34 @@
                                         <span class="badge bg-success">
                                             <i class="bi bi-box-arrow-in-right me-1"></i>Вход
                                         </span>
-                                    {% elif activity.action_type == 'logout' %}
-                                        <span class="badge bg-secondary">
-                                            <i class="bi bi-box-arrow-right me-1"></i>Выход
+                                    {% elif activity.action_type == 'booking_created' %}
+                                        <span class="badge bg-primary">
+                                            <i class="bi bi-plus-circle me-1"></i>Создание брони
+                                        </span>
+                                    {% elif activity.action_type == 'booking_confirmed' %}
+                                        <span class="badge bg-success">
+                                            <i class="bi bi-check-circle me-1"></i>Подтверждение брони
+                                        </span>
+                                    {% elif activity.action_type == 'booking_cancelled' %}
+                                        <span class="badge bg-danger">
+                                            <i class="bi bi-x-circle me-1"></i>Отмена брони
+                                        </span>
+                                    {% elif activity.action_type == 'email_verified' %}
+                                        <span class="badge bg-info">
+                                            <i class="bi bi-envelope-check me-1"></i>Подтверждение email
                                         </span>
                                     {% else %}
-                                        <span class="badge bg-info">{{ activity.action_type }}</span>
+                                        <span class="badge bg-secondary">{{ activity.action_type }}</span>
                                     {% endif %}
+                                </td>
+                                <td class="small">
+                                    {{ activity.description }}
                                 </td>
                                 <td class="text-muted small">{{ activity.ip_address }}</td>
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="4" class="text-center text-muted py-4">
+                                <td colspan="5" class="text-center text-muted py-4">
                                     Записи активности не найдены
                                 </td>
                             </tr>
@@ -100,7 +121,7 @@
                     <ul class="pagination pagination-sm justify-content-center">
                         {% if activities.has_prev %}
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('admin_activity_log', page=activities.prev_num, start_date=start_date, end_date=end_date, action_type=selected_action) }}" aria-label="Previous">
+                            <a class="page-link" href="{{ url_for('admin_visitor_activity_log', page=activities.prev_num, start_date=start_date, end_date=end_date, action_type=selected_action) }}" aria-label="Previous">
                                 <span aria-hidden="true">&laquo;</span>
                             </a>
                         </li>
@@ -118,7 +139,7 @@
                                 </li>
                                 {% else %}
                                 <li class="page-item">
-                                    <a class="page-link" href="{{ url_for('admin_activity_log', page=page_num, start_date=start_date, end_date=end_date, action_type=selected_action) }}">{{ page_num }}</a>
+                                    <a class="page-link" href="{{ url_for('admin_visitor_activity_log', page=page_num, start_date=start_date, end_date=end_date, action_type=selected_action) }}">{{ page_num }}</a>
                                 </li>
                                 {% endif %}
                             {% else %}
@@ -130,7 +151,7 @@
                         
                         {% if activities.has_next %}
                         <li class="page-item">
-                            <a class="page-link" href="{{ url_for('admin_activity_log', page=activities.next_num, start_date=start_date, end_date=end_date, action_type=selected_action) }}" aria-label="Next">
+                            <a class="page-link" href="{{ url_for('admin_visitor_activity_log', page=activities.next_num, start_date=start_date, end_date=end_date, action_type=selected_action) }}" aria-label="Next">
                                 <span aria-hidden="true">&raquo;</span>
                             </a>
                         </li>

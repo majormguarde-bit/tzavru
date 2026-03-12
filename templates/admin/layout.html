@@ -66,10 +66,24 @@
                 {% endif %}
                 
                 {% if current_admin and current_admin.is_superadmin %}
-                <a href="{{ url_for('admin_activity_log') }}" class="list-group-item list-group-item-action {% if 'activity_log' in request.endpoint %}active{% endif %}">
-                    <i class="bi bi-clock-history"></i> Журнал активности
+                <a class="list-group-item list-group-item-action" data-bs-toggle="collapse" href="#activityLogsSubmenu" role="button" aria-expanded="{% if 'admin_activity_log' in request.endpoint or 'admin_visitor_activity_log' in request.endpoint %}true{% else %}false{% endif %}" aria-controls="activityLogsSubmenu">
+                    <i class="bi bi-clock-history"></i> Журналы <i class="bi bi-chevron-down ms-auto" style="font-size: 0.8em;"></i>
                 </a>
+                <div class="collapse {% if 'admin_activity_log' in request.endpoint or 'admin_visitor_activity_log' in request.endpoint %}show{% endif %}" id="activityLogsSubmenu">
+                    <div class="list-group list-group-flush">
+                        <a href="{{ url_for('admin_activity_log') }}" class="list-group-item list-group-item-action small ps-4 {% if 'admin_activity_log' in request.endpoint %}active{% endif %}">
+                            <i class="bi bi-person-gear me-1"></i> Администраторы
+                        </a>
+                        <a href="{{ url_for('admin_visitor_activity_log') }}" class="list-group-item list-group-item-action small ps-4 {% if 'admin_visitor_activity_log' in request.endpoint %}active{% endif %}">
+                            <i class="bi bi-people me-1"></i> Посетители
+                        </a>
+                    </div>
+                </div>
                 {% endif %}
+                
+                <a href="{{ url_for('admin_users') }}" class="list-group-item list-group-item-action {% if 'admin_users' in request.endpoint %}active{% endif %}">
+                    <i class="bi bi-person-lines-fill"></i> Пользователи
+                </a>
                 
                 <a class="list-group-item list-group-item-action" data-bs-toggle="collapse" href="#dictionariesSubmenu" role="button" aria-expanded="false" aria-controls="dictionariesSubmenu">
                     <i class="bi bi-journal-bookmark"></i> Справочники <i class="bi bi-chevron-down ms-auto" style="font-size: 0.8em;"></i>

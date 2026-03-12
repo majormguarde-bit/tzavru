@@ -33,6 +33,14 @@ body {
     background-color: var(--admin-secondary) !important;
 }
 
+.bg-purple {
+    background-color: #6f42c1 !important;
+}
+
+.bg-orange {
+    background-color: #fd7e14 !important;
+}
+
 .border-bottom {
     border-color: var(--admin-border) !important;
 }

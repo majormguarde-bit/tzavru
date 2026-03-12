@@ -733,36 +733,195 @@ def index():
 def send_verification_email(user_email, verification_token):
     """Отправляет email с подтверждением регистрации"""
     try:
+        # Get SMTP settings from DB or Config
+        settings = SiteSettings.query.first()
+        
+        if settings and settings.smtp_server:
+            smtp_server = settings.smtp_server
+            smtp_port = settings.smtp_port
+            smtp_username = settings.smtp_username
+            smtp_password = settings.smtp_password
+            smtp_use_tls = settings.smtp_use_tls
+        else:
+            smtp_server = Config.MAIL_SERVER
+            smtp_port = Config.MAIL_PORT
+            smtp_username = Config.MAIL_USERNAME
+            smtp_password = Config.MAIL_PASSWORD
+            smtp_use_tls = Config.MAIL_USE_TLS
+
+        if not smtp_server:
+            print("SMTP server not configured")
+            return False
+
         # Создаем сообщение
         msg = MIMEMultipart()
-        msg['From'] = Config.MAIL_USERNAME
+        msg['From'] = smtp_username or Config.MAIL_USERNAME
         msg['To'] = user_email
         msg['Subject'] = 'Подтверждение регистрации'
         
         # Создаем ссылку для подтверждения
         verification_url = f"{request.host_url}verify-email/{verification_token}"
         
-        # Текст письма
-        body = f"""
+        # HTML тело письма
+        html_body = f"""
+        <h3>Подтверждение регистрации</h3>
+        <p>Добро пожаловать!</p>
+        <p>Для завершения регистрации, пожалуйста, подтвердите ваш email, перейдя по ссылке ниже:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{verification_url}" style="background-color: #007bff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-size: 16px;">
+                Подтвердить регистрацию
+            </a>
+        </div>
+        
+        <p>Или скопируйте ссылку в браузер:</p>
+        <p style="word-break: break-all; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">
+            {verification_url}
+        </p>
+        
+        <p>Если вы не регистрировались на нашем сайте, проигнорируйте это письмо.</p>
+        """
+        
+        # Текстовая версия для email клиентов без поддержки HTML
+        text_body = f"""
         Добро пожаловать!
         
         Для завершения регистрации, пожалуйста, перейдите по ссылке:
         {verification_url}
         
+        Или скопируйте ссылку в браузер:
+        {verification_url}
+        
         Если вы не регистрировались на нашем сайте, проигнорируйте это письмо.
         """
         
-        msg.attach(MIMEText(body, 'plain'))
+        # Добавляем обе версии письма
+        msg.attach(MIMEText(text_body, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
         
         # Отправляем email
-        with smtplib.SMTP(Config.MAIL_SERVER, Config.MAIL_PORT) as server:
-            server.starttls()
-            server.login(Config.MAIL_USERNAME, Config.MAIL_PASSWORD)
-            server.send_message(msg)
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            if smtp_use_tls:
+                server.starttls()
+            if smtp_username and smtp_password:
+                server.login(smtp_username, smtp_password)
+            server.sendmail(msg['From'], user_email, msg.as_string())
         
         return True
     except Exception as e:
         print(f"Ошибка отправки email: {e}")
+        # Логируем детальную информацию об ошибке для отладки
+        try:
+            settings = SiteSettings.query.first()
+            if settings and settings.smtp_server:
+                print(f"SMTP Server (DB): {settings.smtp_server}")
+                print(f"SMTP Port (DB): {settings.smtp_port}")
+                print(f"SMTP Username (DB): {settings.smtp_username}")
+            else:
+                print(f"MAIL_SERVER (Config): {Config.MAIL_SERVER}")
+                print(f"MAIL_PORT (Config): {Config.MAIL_PORT}")
+                print(f"MAIL_USERNAME (Config): {Config.MAIL_USERNAME}")
+        except:
+            pass
+        return False
+
+def send_booking_confirmation_email(booking):
+    """Отправляет email с подтверждением бронирования со ссылкой"""
+    try:
+        # Get SMTP settings from DB or Config
+        settings = SiteSettings.query.first()
+        
+        if settings and settings.smtp_server:
+            smtp_server = settings.smtp_server
+            smtp_port = settings.smtp_port
+            smtp_username = settings.smtp_username
+            smtp_password = settings.smtp_password
+            smtp_use_tls = settings.smtp_use_tls
+        else:
+            smtp_server = Config.MAIL_SERVER
+            smtp_port = Config.MAIL_PORT
+            smtp_username = Config.MAIL_USERNAME
+            smtp_password = Config.MAIL_PASSWORD
+            smtp_use_tls = Config.MAIL_USE_TLS
+
+        if not smtp_server:
+            print("SMTP server not configured")
+            return False
+
+        # Создаем сообщение
+        msg = MIMEMultipart()
+        msg['From'] = smtp_username or Config.MAIL_USERNAME
+        msg['To'] = booking.guest_email
+        msg['Subject'] = 'Подтверждение бронирования'
+        
+        # Создаем ссылку для подтверждения бронирования
+        confirmation_url = f"{request.host_url}confirm-booking/{booking.booking_token}"
+        
+        # Форматируем даты
+        check_in_formatted = format_date_ru(booking.check_in)
+        check_out_formatted = format_date_ru(booking.check_out)
+        
+        # HTML тело письма
+        html_body = f"""
+        <h3>Подтверждение бронирования #{booking.id}</h3>
+        <p>Здравствуйте, {booking.guest_name}!</p>
+        <p>Ваше бронирование получено. Для завершения регистрации, пожалуйста, подтвердите ваше бронирование, перейдя по ссылке ниже:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{confirmation_url}" style="background-color: #007bff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-size: 16px;">
+                Подтвердить бронирование
+            </a>
+        </div>
+        
+        <p>Или скопируйте ссылку в браузер:</p>
+        <p style="word-break: break-all; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">
+            {confirmation_url}
+        </p>
+        
+        <h4>Детали бронирования:</h4>
+        <ul>
+            <li><strong>Объект:</strong> {booking.property.name}</li>
+            <li><strong>Даты:</strong> {check_in_formatted} - {check_out_formatted}</li>
+            <li><strong>Гостей:</strong> {booking.guests_count}</li>
+            <li><strong>Сумма:</strong> {booking.total_price:,.0f} руб.</li>
+        </ul>
+        
+        <p>Если вы не создавали это бронирование, проигнорируйте это письмо.</p>
+        """
+        
+        # Альтернативное текстовое тело для клиентов без поддержки HTML
+        text_body = f"""
+        Подтверждение бронирования #{booking.id}
+        
+        Здравствуйте, {booking.guest_name}!
+        
+        Ваше бронирование получено. Для завершения регистрации, пожалуйста, перейдите по ссылке:
+        {confirmation_url}
+        
+        Детали бронирования:
+        - Объект: {booking.property.name}
+        - Даты: {check_in_formatted} - {check_out_formatted}
+        - Гостей: {booking.guests_count}
+        - Сумма: {booking.total_price:,.0f} руб.
+        
+        Если вы не создавали это бронирование, проигнорируйте это письмо.
+        """
+        
+        # Добавляем оба варианта (HTML и plain text)
+        msg.attach(MIMEText(text_body, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
+        
+        # Отправляем email
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            if smtp_use_tls:
+                server.starttls()
+            if smtp_username and smtp_password:
+                server.login(smtp_username, smtp_password)
+            server.sendmail(msg['From'], booking.guest_email, msg.as_string())
+        
+        return True
+    except Exception as e:
+        print(f"Ошибка отправки email подтверждения бронирования: {e}")
         return False
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -806,6 +965,18 @@ def register():
         return redirect(url_for('index'))
     
     return render_template('register.html')
+
+@app.route('/debug-email-config')
+def debug_email_config():
+    """Страница для отладки email конфигурации"""
+    email_config = {
+        'MAIL_SERVER': getattr(Config, 'MAIL_SERVER', 'NOT SET'),
+        'MAIL_PORT': getattr(Config, 'MAIL_PORT', 'NOT SET'),
+        'MAIL_USERNAME': getattr(Config, 'MAIL_USERNAME', 'NOT SET'),
+        'MAIL_PASSWORD': 'SET' if getattr(Config, 'MAIL_PASSWORD', None) else 'NOT SET',
+        'MAIL_USE_TLS': getattr(Config, 'MAIL_USE_TLS', 'NOT SET')
+    }
+    return jsonify(email_config)
 
 @app.route('/verify-email/<token>')
 def verify_email(token):
@@ -892,7 +1063,13 @@ def sw_js():
 @app.route('/property/<int:id>')
 def property_detail(id):
     property = Property.query.get_or_404(id)
-    return render_template('property_detail.html', property=property)
+    
+    # Get current user for template
+    current_user_obj = None
+    if 'user_id' in session:
+        current_user_obj = User.query.get(session['user_id'])
+    
+    return render_template('property_detail.html', property=property, current_user_obj=current_user_obj)
 
 @app.route('/api/properties/<int:property_id>/busy-dates')
 def get_busy_dates(property_id):
@@ -1676,6 +1853,12 @@ def booking(property_id):
 
             db.session.commit()
             
+            # Send booking confirmation email with clickable link
+            try:
+                send_booking_confirmation_email(booking)
+            except Exception as e:
+                print(f"Ошибка отправки email подтверждения бронирования: {e}")
+            
             # Log booking creation in guest journal
             if 'user_id' in session:
                 user = User.query.get(session['user_id'])
@@ -1853,6 +2036,33 @@ def booking_success(booking_token):
     booking = Booking.query.filter_by(booking_token=booking_token).first_or_404()
     return render_template('booking_success.html', booking=booking)
 
+@app.route('/confirm-booking/<booking_token>')
+def confirm_booking(booking_token):
+    """Подтверждение бронирования по ссылке из email"""
+    booking = Booking.query.filter_by(booking_token=booking_token).first_or_404()
+    
+    # Проверяем, не подтверждено ли уже бронирование
+    if booking.is_email_confirmed:
+        flash('Бронирование уже подтверждено ранее.', 'info')
+        return redirect(url_for('booking_success', booking_token=booking_token))
+    
+    # Обновляем статус подтверждения
+    booking.is_email_confirmed = True
+    booking.status = 'confirmed'  # Меняем статус на подтвержденный
+    
+    # Логируем подтверждение
+    log_guest_action(
+        booking_id=booking.id,
+        action_type='booking_confirmed',
+        description=f'Бронирование #{booking.id} подтверждено по email ссылке',
+        request=request
+    )
+    
+    db.session.commit()
+    
+    flash('Бронирование успешно подтверждено! Спасибо за подтверждение.', 'success')
+    return redirect(url_for('booking_success', booking_token=booking_token))
+
 @app.route('/manifest.webmanifest')
 def manifest_webmanifest():
     settings = SiteSettings.query.first()
@@ -1966,12 +2176,28 @@ def get_dashboard_stats(start_date, end_date, user=None):
     else:
         total_properties = Property.query.count()
     
+    # Registration and visitor statistics for last 24 hours
+    twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+    
+    # Daily registrations (users created in last 24 hours)
+    daily_registrations = User.query.filter(
+        User.created_at >= twenty_four_hours_ago
+    ).count()
+    
+    # Daily visitors (guest journal entries in last 24 hours)
+    daily_visitors = GuestJournal.query.filter(
+        GuestJournal.created_at >= twenty_four_hours_ago,
+        GuestJournal.action_type.in_(['login', 'booking_created', 'email_verified'])
+    ).distinct(GuestJournal.user_id).count()
+    
     stats = {
         'total_properties': total_properties,
         'total_bookings': total_bookings,
         'pending_bookings': pending_bookings,
         'confirmed_revenue': confirmed_revenue,
-        'pending_revenue': pending_revenue
+        'pending_revenue': pending_revenue,
+        'daily_registrations': daily_registrations,
+        'daily_visitors': daily_visitors
     }
     
     return stats, bookings_list
@@ -2224,12 +2450,34 @@ def admin_admin_add():
 @admin_required
 def admin_users():
     user = get_current_admin()
+    
+    # Получаем параметры поиска и фильтрации
+    search_query = request.args.get('search', '').strip()
+    status_filter = request.args.get('status', '')
+    
+    # Базовый запрос
     if user and user.is_superadmin:
         # Суперадмин видит всех пользователей
-        users = User.query.order_by(User.created_at.desc()).all()
+        query = User.query
     else:
         # Обычный админ видит только обычных пользователей (не админов)
-        users = User.query.filter_by(is_admin=False).order_by(User.created_at.desc()).all()
+        query = User.query.filter_by(is_admin=False)
+    
+    # Применяем поиск
+    if search_query:
+        query = query.filter(
+            (User.username.ilike(f'%{search_query}%')) |
+            (User.email.ilike(f'%{search_query}%'))
+        )
+    
+    # Применяем фильтр по статусу email
+    if status_filter == 'verified':
+        query = query.filter_by(is_email_verified=True)
+    elif status_filter == 'unverified':
+        query = query.filter_by(is_email_verified=False)
+    
+    # Сортируем и получаем результаты
+    users = query.order_by(User.created_at.desc()).all()
     
     return render_template('admin/users.html', users=users)
 
@@ -2334,6 +2582,53 @@ def admin_user_delete(user_id):
     db.session.delete(user_to_delete)
     db.session.commit()
     flash('Пользователь полностью удален из системы.', 'success')
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/edit/<int:user_id>', methods=['GET', 'POST'])
+@superadmin_required
+def admin_user_edit(user_id):
+    user = User.query.get_or_404(user_id)
+    
+    if request.method == 'POST':
+        user.username = request.form.get('username', user.username)
+        user.email = request.form.get('email', user.email)
+        user.phone = request.form.get('phone', user.phone)
+        
+        # Handle email verification status
+        if 'is_email_verified' in request.form:
+            user.is_email_verified = True
+        else:
+            user.is_email_verified = False
+        
+        # Handle account activation status
+        if 'is_active' in request.form:
+            user.is_active = True
+        else:
+            user.is_active = False
+        
+        db.session.commit()
+        flash('Данные пользователя успешно обновлены.', 'success')
+        return redirect(url_for('admin_users'))
+    
+    return render_template('admin/edit_user.html', user=user)
+
+@app.route('/admin/users/verify-email/<int:user_id>', methods=['POST'])
+@superadmin_required
+def admin_user_verify_email(user_id):
+    user = User.query.get_or_404(user_id)
+    user.is_email_verified = True
+    db.session.commit()
+    flash('Email пользователя подтвержден.', 'success')
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/toggle-active/<int:user_id>', methods=['POST'])
+@superadmin_required
+def admin_user_toggle_active(user_id):
+    user = User.query.get_or_404(user_id)
+    user.is_active = not user.is_active
+    status = 'активирован' if user.is_active else 'заблокирован'
+    db.session.commit()
+    flash(f'Пользователь {status}.', 'success')
     return redirect(url_for('admin_users'))
 
 @app.route('/admin/logout')
@@ -3180,8 +3475,42 @@ def admin_check_mail():
 @app.route('/admin/activity-log')
 @superadmin_required
 def admin_activity_log():
-    # Получаем журнал активности администраторов
-    activities = ActivityLog.query.join(User).filter(User.is_admin == True).order_by(ActivityLog.created_at.desc()).all()
+    # Получаем параметры фильтрации и пагинации
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    action_type = request.args.get('action_type', '')
+    page = request.args.get('page', 1, type=int)
+    per_page = 20  # Количество записей на странице
+    
+    # Базовый запрос с сортировкой по времени (новые сверху)
+    query = ActivityLog.query.join(User).filter(User.is_admin == True)
+    
+    # Применяем фильтр по дате начала
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+            query = query.filter(ActivityLog.created_at >= start_date)
+        except ValueError:
+            pass
+    
+    # Применяем фильтр по дате окончания
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            # Добавляем 1 день чтобы включить всю конечную дату
+            end_date = end_date + timedelta(days=1)
+            query = query.filter(ActivityLog.created_at <= end_date)
+        except ValueError:
+            pass
+    
+    # Применяем фильтр по типу действия
+    if action_type:
+        query = query.filter(ActivityLog.action_type == action_type)
+    
+    # Сортируем по времени (новые сверху) и применяем пагинацию
+    activities = query.order_by(ActivityLog.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
     
     # Получаем список онлайн администраторов
     online_admins = get_online_admins()
@@ -3189,7 +3518,61 @@ def admin_activity_log():
     return render_template('admin/activity_log.html', 
                          activities=activities, 
                          online_admins=online_admins,
-                         datetime=datetime)
+                         datetime=datetime,
+                         start_date=start_date_str,
+                         end_date=end_date_str,
+                         selected_action=action_type)
+
+@app.route('/admin/visitor-activity-log')
+@superadmin_required
+def admin_visitor_activity_log():
+    # Получаем параметры фильтрации и пагинации
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    action_type = request.args.get('action_type', '')
+    page = request.args.get('page', 1, type=int)
+    per_page = 20  # Количество записей на странице
+    
+    # Базовый запрос с сортировкой по времени (новые сверху)
+    query = GuestJournal.query
+    
+    # Применяем фильтр по дате начала
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+            query = query.filter(GuestJournal.created_at >= start_date)
+        except ValueError:
+            pass
+    
+    # Применяем фильтр по дате окончания
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            # Добавляем 1 день чтобы включить всю конечную дату
+            end_date = end_date + timedelta(days=1)
+            query = query.filter(GuestJournal.created_at <= end_date)
+        except ValueError:
+            pass
+    
+    # Применяем фильтр по типу действия
+    if action_type:
+        query = query.filter(GuestJournal.action_type == action_type)
+    
+    # Сортируем по времени (новые сверху) и применяем пагинацию
+    activities = query.order_by(GuestJournal.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    # Получаем список онлайн администраторов
+    online_admins = get_online_admins()
+    
+    return render_template('admin/visitor_activity_log.html', 
+                         activities=activities, 
+                         online_admins=online_admins,
+                         datetime=datetime,
+                         start_date=start_date_str,
+                         end_date=end_date_str,
+                         selected_action=action_type)
 
 @app.route('/admin/settings/reset-db', methods=['POST'])
 @superadmin_required
