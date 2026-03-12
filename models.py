@@ -16,6 +16,9 @@ class User(UserMixin, db.Model):
     can_edit_properties = db.Column(db.Boolean, default=True)
     can_delete_properties = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_email_verified = db.Column(db.Boolean, default=False)
+    email_verification_token = db.Column(db.String(100))
+    email_verification_sent_at = db.Column(db.DateTime)
 
 class UnitType(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -175,6 +178,19 @@ class BookingOption(db.Model):
 
     booking = db.relationship('Booking', backref=db.backref('selected_options', lazy=True, cascade="all, delete-orphan"))
     option_type = db.relationship('OptionType')
+
+class GuestJournal(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    booking_id = db.Column(db.Integer, db.ForeignKey('booking.id'), nullable=True)
+    action_type = db.Column(db.String(50), nullable=False)  # 'booking_created', 'booking_confirmed', 'booking_cancelled', 'login', 'logout', 'email_verified'
+    description = db.Column(db.Text, nullable=False)
+    ip_address = db.Column(db.String(45))
+    user_agent = db.Column(db.String(400))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', backref=db.backref('journal_entries', lazy=True))
+    booking = db.relationship('Booking', backref=db.backref('journal_entries', lazy=True))
 
 class ContactRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)

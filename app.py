@@ -18,6 +18,9 @@ import unicodedata
 import smtplib
 import imaplib
 import email
+import uuid
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import time
 from email.header import decode_header
 from email.mime.text import MIMEText
@@ -72,7 +75,7 @@ app.config['SECRET_KEY'] = 'dev-secret-key-change-this-in-production'
 
 from models import db, User, UnitType, OptionType, CharacteristicType, PropertyOption, \
     PropertyCharacteristic, Property, Review, Booking, BookingDevice, BookingPasskey, \
-    BookingOption, ContactRequest, PropertyType, SiteSettings, AdminPropertyAccess
+    BookingOption, ContactRequest, PropertyType, SiteSettings, AdminPropertyAccess, GuestJournal
 
 # Initialize db with app
 db.init_app(app)
@@ -638,7 +641,7 @@ def superadmin_required(f):
             flash('Требуется авторизация', 'error')
             return redirect(url_for('login'))
         user = User.query.get(session['user_id'])
-        if not user or not user.is_admin or not user.is_superadmin:
+        if not user or not user.is_superadmin:
             flash('Требуются права суперадминистратора', 'error')
             return redirect(url_for('admin_dashboard'))
         return f(*args, **kwargs)
@@ -681,6 +684,161 @@ def index():
     map_properties = Property.query.filter(Property.latitude.isnot(None), Property.longitude.isnot(None)).all()
     
     return render_template('index.html', properties=properties, reviews=reviews, map_properties=map_properties)
+
+def send_verification_email(user_email, verification_token):
+    """Отправляет email с подтверждением регистрации"""
+    try:
+        # Создаем сообщение
+        msg = MIMEMultipart()
+        msg['From'] = Config.MAIL_USERNAME
+        msg['To'] = user_email
+        msg['Subject'] = 'Подтверждение регистрации'
+        
+        # Создаем ссылку для подтверждения
+        verification_url = f"{request.host_url}verify-email/{verification_token}"
+        
+        # Текст письма
+        body = f"""
+        Добро пожаловать!
+        
+        Для завершения регистрации, пожалуйста, перейдите по ссылке:
+        {verification_url}
+        
+        Если вы не регистрировались на нашем сайте, проигнорируйте это письмо.
+        """
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Отправляем email
+        with smtplib.SMTP(Config.MAIL_SERVER, Config.MAIL_PORT) as server:
+            server.starttls()
+            server.login(Config.MAIL_USERNAME, Config.MAIL_PASSWORD)
+            server.send_message(msg)
+        
+        return True
+    except Exception as e:
+        print(f"Ошибка отправки email: {e}")
+        return False
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        phone = request.form.get('phone')
+        
+        # Проверяем, существует ли пользователь
+        if User.query.filter_by(username=username).first():
+            flash('Пользователь с таким именем уже существует.', 'error')
+            return render_template('register.html')
+        
+        if User.query.filter_by(email=email).first():
+            flash('Пользователь с таким email уже существует.', 'error')
+            return render_template('register.html')
+        
+        # Создаем нового пользователя
+        verification_token = str(uuid.uuid4())
+        new_user = User(
+            username=username,
+            email=email,
+            phone=phone,
+            password_hash=generate_password_hash(password),
+            is_email_verified=False,
+            email_verification_token=verification_token,
+            email_verification_sent_at=datetime.utcnow()
+        )
+        
+        db.session.add(new_user)
+        db.session.commit()
+        
+        # Отправляем email с подтверждением
+        if send_verification_email(email, verification_token):
+            flash('Регистрация успешна! Проверьте ваш email для подтверждения.', 'success')
+        else:
+            flash('Регистрация успешна, но не удалось отправить email подтверждения. Свяжитесь с поддержкой.', 'warning')
+        
+        return redirect(url_for('index'))
+    
+    return render_template('register.html')
+
+@app.route('/verify-email/<token>')
+def verify_email(token):
+    user = User.query.filter_by(email_verification_token=token).first()
+    
+    if not user:
+        flash('Неверная или устаревшая ссылка подтверждения.', 'error')
+        return redirect(url_for('index'))
+    
+    # Проверяем, не истекло ли время действия токена (24 часа)
+    if datetime.utcnow() - user.email_verification_sent_at > timedelta(hours=24):
+        flash('Срок действия ссылки подтверждения истек. Запросите новую.', 'error')
+        return redirect(url_for('index'))
+    
+    # Подтверждаем email
+    user.is_email_verified = True
+    user.email_verification_token = None
+    db.session.commit()
+    
+    # Log email verification
+    log_guest_action(
+        user_id=user.id,
+        action_type='email_verified',
+        description=f'Email успешно подтвержден',
+        request=request
+    )
+    
+    flash('Email успешно подтвержден! Теперь вы можете войти в систему.', 'success')
+    return redirect(url_for('index'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def public_login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password_hash, password):
+            if not user.is_email_verified:
+                flash('Пожалуйста, подтвердите ваш email перед входом.', 'error')
+                return render_template('login.html')
+            
+            # Создаем сессию для обычного пользователя
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session['is_admin'] = user.is_admin
+            session['is_superadmin'] = user.is_superadmin
+            
+            # Log successful login
+            log_guest_action(
+                user_id=user.id,
+                action_type='login',
+                description=f'Успешный вход в систему',
+                request=request
+            )
+            
+            flash('Вход выполнен успешно', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('Неверное имя пользователя или пароль', 'error')
+    
+    return render_template('login.html')
+
+@app.route('/logout-public')
+def public_logout():
+    # Log logout action if user was logged in
+    if 'user_id' in session:
+        log_guest_action(
+            user_id=session['user_id'],
+            action_type='logout',
+            description=f'Выход из системы',
+            request=request
+        )
+    
+    session.clear()
+    flash('Вы вышли из системы', 'success')
+    return redirect(url_for('index'))
 
 @app.route('/sw.js')
 def sw_js():
@@ -1262,6 +1420,23 @@ def api_booking_cancel():
         
     return jsonify({'status': 'ok', 'message': 'Бронирование успешно отменено'})
 
+def log_guest_action(user_id=None, booking_id=None, action_type='', description='', request=None):
+    """Log guest actions to the journal"""
+    try:
+        journal_entry = GuestJournal(
+            user_id=user_id,
+            booking_id=booking_id,
+            action_type=action_type,
+            description=description,
+            ip_address=request.remote_addr if request else None,
+            user_agent=request.headers.get('User-Agent') if request else None
+        )
+        db.session.add(journal_entry)
+        db.session.commit()
+    except Exception as e:
+        print(f"Error logging guest action: {e}")
+        db.session.rollback()
+
 def generate_math_captcha():
     """Generates a simple math problem."""
     a = random.randint(1, 10)
@@ -1287,6 +1462,21 @@ def captcha():
 def booking(property_id):
     property = Property.query.get_or_404(property_id)
     property_options = sorted(property.property_options, key=lambda po: po.option_type.name.lower())
+    
+    # Get current user for template
+    current_user_obj = None
+    if 'user_id' in session:
+        current_user_obj = User.query.get(session['user_id'])
+    
+    # Check if user is authenticated and email is verified for POST requests
+    if request.method == 'POST':
+        if current_user_obj and not current_user_obj.is_email_verified:
+            msg = 'Для бронирования необходимо подтвердить ваш email. Пожалуйста, проверьте вашу почту и подтвердите email.'
+            is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+            if is_ajax:
+                return jsonify({'status': 'error', 'message': msg})
+            flash(msg, 'error')
+            return redirect(url_for('public_login'))
     
     if request.method == 'GET':
         # Generate initial captcha for GET request
@@ -1441,6 +1631,25 @@ def booking(property_id):
 
             db.session.commit()
             
+            # Log booking creation in guest journal
+            if 'user_id' in session:
+                user = User.query.get(session['user_id'])
+                if user:
+                    log_guest_action(
+                        user_id=user.id,
+                        booking_id=booking.id,
+                        action_type='booking_created',
+                        description=f'Создано бронирование #{booking.id} для объекта "{property.name}"',
+                        request=request
+                    )
+            else:
+                log_guest_action(
+                    booking_id=booking.id,
+                    action_type='booking_created',
+                    description=f'Создано бронирование #{booking.id} для объекта "{property.name}" (анонимный пользователь)',
+                    request=request
+                )
+            
             # Send email notification
             try:
                 selected_options_html = ''
@@ -1592,7 +1801,7 @@ def booking(property_id):
             flash(msg, 'error')
             return redirect(url_for('booking', property_id=property_id))
             
-    return render_template('booking.html', property=property, captcha_question=captcha_question, property_options=property_options)
+    return render_template('booking.html', property=property, captcha_question=captcha_question, property_options=property_options, current_user_obj=current_user_obj)
 
 @app.route('/booking/success/<booking_token>', endpoint='booking_success')
 def booking_success(booking_token):
@@ -1955,6 +2164,19 @@ def admin_admin_add():
 
     return render_template('admin/edit_admin.html')
 
+@app.route('/admin/users')
+@admin_required
+def admin_users():
+    user = get_current_admin()
+    if user and user.is_superadmin:
+        # Суперадмин видит всех пользователей
+        users = User.query.order_by(User.created_at.desc()).all()
+    else:
+        # Обычный админ видит только обычных пользователей (не админов)
+        users = User.query.filter_by(is_admin=False).order_by(User.created_at.desc()).all()
+    
+    return render_template('admin/users.html', users=users)
+
 @app.route('/admin/admins/edit/<int:user_id>', methods=['GET', 'POST'])
 @superadmin_required
 def admin_admin_edit(user_id):
@@ -2036,16 +2258,27 @@ def admin_admin_delete(user_id):
     # Delete admin property access records
     AdminPropertyAccess.query.filter_by(user_id=admin_to_delete.id).delete()
     
-    # Remove admin privileges but keep the user account
-    admin_to_delete.is_admin = False
-    admin_to_delete.is_superadmin = False
-    admin_to_delete.can_create_properties = False
-    admin_to_delete.can_edit_properties = False
-    admin_to_delete.can_delete_properties = False
-    
+    # Completely delete the user account
+    db.session.delete(admin_to_delete)
     db.session.commit()
-    flash('Права администратора удалены. Пользователь сохранен как обычный пользователь.', 'success')
+    flash('Администратор полностью удален из системы.', 'success')
     return redirect(url_for('admin_admins'))
+
+@app.route('/admin/users/delete/<int:user_id>', methods=['POST'])
+@superadmin_required
+def admin_user_delete(user_id):
+    user_to_delete = User.query.get_or_404(user_id)
+    
+    # Prevent deletion of admins (should use admin deletion route instead)
+    if user_to_delete.is_admin:
+        flash('Нельзя удалить администратора через этот интерфейс.', 'error')
+        return redirect(url_for('admin_users'))
+    
+    # Completely delete the user account
+    db.session.delete(user_to_delete)
+    db.session.commit()
+    flash('Пользователь полностью удален из системы.', 'success')
+    return redirect(url_for('admin_users'))
 
 @app.route('/admin/logout')
 @login_required
@@ -2759,7 +2992,7 @@ from PIL import Image
 import io
 
 @app.route('/admin/settings', methods=['GET', 'POST'])
-@admin_required
+@superadmin_required
 def admin_settings():
     settings = SiteSettings.query.first()
     if not settings:
@@ -2841,7 +3074,7 @@ def admin_settings():
     return render_template('admin/settings.html', settings=settings)
 
 @app.route('/admin/settings/test-email', methods=['POST'])
-@admin_required
+@superadmin_required
 def admin_test_email():
     email = request.form.get('test_email')
     if not email:
@@ -2865,7 +3098,7 @@ def admin_test_email():
     return redirect(url_for('admin_settings'))
 
 @app.route('/admin/settings/check-mail', methods=['POST'])
-@admin_required
+@superadmin_required
 def admin_check_mail():
     try:
         settings = SiteSettings.query.first()

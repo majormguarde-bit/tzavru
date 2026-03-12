@@ -123,7 +123,24 @@
                             Вы бронируете: <strong>{{ property.name }}</strong>
                         </p>
                         
-                        <form method="POST" id="bookingForm">
+                        {% if not session.user_id %}
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>Для бронирования необходимо войти в систему</strong><br>
+                            Пожалуйста, <a href="{{ url_for('public_login') }}" class="alert-link">войдите</a> или 
+                            <a href="{{ url_for('register') }}" class="alert-link">зарегистрируйтесь</a>, чтобы забронировать объект.
+                        </div>
+                        {% else %}
+                            {% if current_user_obj and not current_user_obj.is_email_verified %}
+                            <div class="alert alert-warning">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong>Требуется подтверждение email</strong><br>
+                                Для бронирования необходимо подтвердить ваш email. Пожалуйста, проверьте вашу почту и подтвердите email.
+                            </div>
+                            {% endif %}
+                        {% endif %}
+                        
+                        <form method="POST" id="bookingForm" {% if not session.user_id or (current_user_obj and not current_user_obj.is_email_verified) %}onsubmit="return false;"{% endif %}>
                             <div class="row g-3">
                                 <div class="col-md-6">
                                     <label class="form-label">Дата заезда *</label>

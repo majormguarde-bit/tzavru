@@ -49,6 +49,29 @@
                         <a class="nav-link" href="{{ url_for('index') }}#contact">Контакты</a>
                     </li>
                 </ul>
+                <ul class="navbar-nav">
+                    {% if session.user_id %}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="bi bi-person"></i> {{ session.username }}
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                {% if session.is_admin %}
+                                    <li><a class="dropdown-item" href="/admin">Админ-панель</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                {% endif %}
+                                <li><a class="dropdown-item" href="{{ url_for('public_logout') }}">Выйти</a></li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('public_login') }}">Войти</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('register') }}">Регистрация</a>
+                        </li>
+                    {% endif %}
+                </ul>
                 <a href="tel:{{ site_settings.phone_main if site_settings else '+7-900-123-45-67' }}" class="btn btn-outline-light">
                     <i class="bi bi-telephone"></i> {{ site_settings.phone_main if site_settings else '+7 900 123-45-67' }}
                 </a>
