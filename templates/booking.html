@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Бронирование - {{ property.name }}{% endblock %}
+{% block title %}Оформление заявки - {{ property.name }}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -107,7 +107,7 @@
                 <ol class="breadcrumb mb-0 py-2 px-3 rounded-3" style="background-color: rgba(0,0,0,0.5); display: inline-flex;">
                     <li class="breadcrumb-item"><a href="{{ url_for('index') }}" class="text-white text-decoration-none opacity-75 hover-opacity-100">Главная</a></li>
                     <li class="breadcrumb-item"><a href="{{ url_for('property_detail', id=property.id) }}" class="text-white text-decoration-none opacity-75 hover-opacity-100">{{ property.name }}</a></li>
-                    <li class="breadcrumb-item active text-white" aria-current="page">Бронирование</li>
+                    <li class="breadcrumb-item active text-white" aria-current="page">Оформление заявки</li>
                 </ol>
             </nav>
         </div>
@@ -118,9 +118,9 @@
             <div class="col-lg-8">
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-body p-4">
-                        <h2 class="mb-4">Бронирование</h2>
+                        <h2 class="mb-4">Оформление заявки</h2>
                         <p class="text-muted mb-4">
-                            Вы бронируете: <strong>{{ property.name }}</strong>
+                            Вы оформляете заявку на: <strong>{{ property.name }}</strong>
                         </p>
                         
                         {% if not session.user_id %}
@@ -336,7 +336,7 @@
                     <i class="bi bi-telegram" style="font-size: 2.5rem;"></i>
                 </a>
                 <button type="submit" form="bookingForm" class="btn btn-primary d-none d-md-inline-block px-4 px-md-5 btn-lg pulse-yellow-filled shadow-lg">
-                    <i class="bi bi-check-circle me-2"></i> Забронировать
+                    <i class="bi bi-check-circle me-2"></i> Оформить заявку
                 </button>
                 <button type="submit" form="bookingForm" class="btn btn-primary d-md-none rounded-circle d-flex align-items-center justify-content-center pulse-yellow-filled shadow-lg" style="width: 55px; height: 55px; padding: 0;">
                     <i class="bi bi-check-lg fs-4"></i>

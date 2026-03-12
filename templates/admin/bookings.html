@@ -11,11 +11,11 @@
         </a>
         <a href="{{ url_for('admin_bookings', status='pending') }}" 
            class="btn btn-{{ 'warning' if status_filter == 'pending' else 'outline-warning' }}">
-            Ожидают
+            Заявки
         </a>
         <a href="{{ url_for('admin_bookings', status='confirmed') }}" 
            class="btn btn-{{ 'success' if status_filter == 'confirmed' else 'outline-success' }}">
-            Подтверждены
+            Бронирования
         </a>
         <a href="{{ url_for('admin_bookings', status='cancelled') }}" 
            class="btn btn-{{ 'secondary' if status_filter == 'cancelled' else 'outline-secondary' }}">
@@ -88,9 +88,9 @@
                         </td>
                         <td>
                             {% if booking.status == 'pending' %}
-                                <span class="badge bg-warning" style="color: #000;">Ожидает</span>
+                                <span class="badge bg-warning" style="color: #000;">Заявка</span>
                             {% elif booking.status == 'confirmed' %}
-                                <span class="badge bg-success">Подтверждено</span>
+                                <span class="badge bg-success">Бронирование</span>
                             {% else %}
                                 <span class="badge bg-secondary">Отменено</span>
                             {% endif %}

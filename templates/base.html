@@ -56,11 +56,13 @@
                                 <i class="bi bi-person"></i> {{ session.username }}
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="{{ url_for('my_bookings') }}"><i class="bi bi-list-check me-2"></i>Мои заявки</a></li>
                                 {% if session.is_admin %}
-                                    <li><a class="dropdown-item" href="/admin">Админ-панель</a></li>
                                     <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="/admin">Админ-панель</a></li>
                                 {% endif %}
-                                <li><a class="dropdown-item" href="{{ url_for('public_logout') }}">Выйти</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ url_for('public_logout') }}"><i class="bi bi-box-arrow-right me-2"></i>Выйти</a></li>
                             </ul>
                         </li>
                     {% else %}

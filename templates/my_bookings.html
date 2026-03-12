@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{% block title %}Мои заявки - {{ site_settings.site_name if site_settings else 'Imperial Collection' }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5 pt-5">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Главная</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Мои заявки</li>
+                </ol>
+            </nav>
+            
+            <h1 class="mb-4">Мои заявки и бронирования</h1>
+            
+            {% if not pending_bookings and not confirmed_bookings and not cancelled_bookings %}
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox fs-1 text-muted d-block mb-3"></i>
+                    <h5 class="text-muted">У вас пока нет заявок</h5>
+                    <p class="text-muted">Начните с выбора объекта размещения на главной странице</p>
+                    <a href="{{ url_for('index') }}#properties" class="btn btn-primary">
+                        <i class="bi bi-search me-2"></i>Выбрать объект
+                    </a>
+                </div>
+            {% else %}
+                <!-- Вкладки -->
+                <ul class="nav nav-pills mb-4" id="bookingsTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="pending-tab" data-bs-toggle="pill" data-bs-target="#pending" type="button" role="tab">
+                            <i class="bi bi-clock me-2"></i>Заявки
+                            {% if pending_bookings %}<span class="badge bg-warning ms-1">{{ pending_bookings|length }}</span>{% endif %}
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="confirmed-tab" data-bs-toggle="pill" data-bs-target="#confirmed" type="button" role="tab">
+                            <i class="bi bi-check-circle me-2"></i>Бронирования
+                            {% if confirmed_bookings %}<span class="badge bg-success ms-1">{{ confirmed_bookings|length }}</span>{% endif %}
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="cancelled-tab" data-bs-toggle="pill" data-bs-target="#cancelled" type="button" role="tab">
+                            <i class="bi bi-x-circle me-2"></i>Отмененные
+                            {% if cancelled_bookings %}<span class="badge bg-secondary ms-1">{{ cancelled_bookings|length }}</span>{% endif %}
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- Содержимое вкладок -->
+                <div class="tab-content" id="bookingsTabsContent">
+                    <!-- Заявки -->
+                    <div class="tab-pane fade show active" id="pending" role="tabpanel">
+                        {% if pending_bookings %}
+                            <div class="row">
+                                {% for booking in pending_bookings %}
+                                    <div class="col-lg-6 mb-4">
+                                        <div class="card shadow-sm">
+                                            <div class="card-header bg-warning bg-opacity-10">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <h5 class="mb-0">Заявка #{{ booking.id }}</h5>
+                                                    <span class="badge bg-warning text-dark">Ожидает подтверждения</span>
+                                                </div>
+                                            </div>
+                                            <div class="card-body">
+                                                <h6 class="card-title">{{ booking.property.name }}</h6>
+                                                <div class="row mb-3">
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Заезд</small>
+                                                        <div>{{ booking.check_in.strftime('%d.%m.%Y') }}</div>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Выезд</small>
+                                                        <div>{{ booking.check_out.strftime('%d.%m.%Y') }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="row mb-3">
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Гостей</small>
+                                                        <div>{{ booking.guests_count }}</div>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Сумма</small>
+                                                        <div class="fw-bold">{{ booking.total_price|format_price }} ₽</div>
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    <a href="{{ url_for('booking_success', booking_token=booking.booking_token) }}" class="btn btn-outline-primary btn-sm">
+                                                        <i class="bi bi-eye me-1"></i>Подробнее
+                                                    </a>
+                                                    <button class="btn btn-outline-danger btn-sm" onclick="cancelBooking('{{ booking.booking_token }}')">
+                                                        <i class="bi bi-x-lg me-1"></i>Отменить
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="bi bi-clock fs-1 text-muted d-block mb-3"></i>
+                                <h5 class="text-muted">Нет активных заявок</h5>
+                                <p class="text-muted">Все ваши заявки уже подтверждены или отменены</p>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Бронирования -->
+                    <div class="tab-pane fade" id="confirmed" role="tabpanel">
+                        {% if confirmed_bookings %}
+                            <div class="row">
+                                {% for booking in confirmed_bookings %}
+                                    <div class="col-lg-6 mb-4">
+                                        <div class="card shadow-sm">
+                                            <div class="card-header bg-success bg-opacity-10">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <h5 class="mb-0">Бронирование #{{ booking.id }}</h5>
+                                                    <span class="badge bg-success">Подтверждено</span>
+                                                </div>
+                                            </div>
+                                            <div class="card-body">
+                                                <h6 class="card-title">{{ booking.property.name }}</h6>
+                                                <div class="row mb-3">
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Заезд</small>
+                                                        <div>{{ booking.check_in.strftime('%d.%m.%Y') }}</div>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Выезд</small>
+                                                        <div>{{ booking.check_out.strftime('%d.%m.%Y') }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="row mb-3">
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Гостей</small>
+                                                        <div>{{ booking.guests_count }}</div>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Сумма</small>
+                                                        <div class="fw-bold">{{ booking.total_price|format_price }} ₽</div>
+                                                    </div>
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    <a href="{{ url_for('booking_success', booking_token=booking.booking_token) }}" class="btn btn-outline-primary btn-sm">
+                                                        <i class="bi bi-eye me-1"></i>Подробнее
+                                                    </a>
+                                                    <button class="btn btn-outline-danger btn-sm" onclick="cancelBooking('{{ booking.booking_token }}')">
+                                                        <i class="bi bi-x-lg me-1"></i>Отменить
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="bi bi-check-circle fs-1 text-muted d-block mb-3"></i>
+                                <h5 class="text-muted">Нет подтвержденных бронирований</h5>
+                                <p class="text-muted">Создайте новую заявку, чтобы начать процесс бронирования</p>
+                                <a href="{{ url_for('index') }}#properties" class="btn btn-primary">
+                                    <i class="bi bi-search me-2"></i>Выбрать объект
+                                </a>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Отмененные -->
+                    <div class="tab-pane fade" id="cancelled" role="tabpanel">
+                        {% if cancelled_bookings %}
+                            <div class="row">
+                                {% for booking in cancelled_bookings %}
+                                    <div class="col-lg-6 mb-4">
+                                        <div class="card shadow-sm">
+                                            <div class="card-header bg-secondary bg-opacity-10">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <h5 class="mb-0">Бронирование #{{ booking.id }}</h5>
+                                                    <span class="badge bg-secondary">Отменено</span>
+                                                </div>
+                                            </div>
+                                            <div class="card-body">
+                                                <h6 class="card-title">{{ booking.property.name }}</h6>
+                                                <div class="row mb-3">
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Заезд</small>
+                                                        <div>{{ booking.check_in.strftime('%d.%m.%Y') }}</div>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Выезд</small>
+                                                        <div>{{ booking.check_out.strftime('%d.%m.%Y') }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="row mb-3">
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Гостей</small>
+                                                        <div>{{ booking.guests_count }}</div>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <small class="text-muted">Сумма</small>
+                                                        <div class="fw-bold text-decoration-line-through">{{ booking.total_price|format_price }} ₽</div>
+                                                    </div>
+                                                </div>
+                                                {% if booking.cancel_reason %}
+                                                    <div class="alert alert-light border small">
+                                                        <strong>Причина отмены:</strong> {{ booking.cancel_reason }}
+                                                    </div>
+                                                {% endif %}
+                                                <div class="d-flex gap-2">
+                                                    <a href="{{ url_for('booking_success', booking_token=booking.booking_token) }}" class="btn btn-outline-primary btn-sm">
+                                                        <i class="bi bi-eye me-1"></i>Подробнее
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="bi bi-x-circle fs-1 text-muted d-block mb-3"></i>
+                                <h5 class="text-muted">Нет отмененных бронирований</h5>
+                                <p class="text-muted">Хорошо, что все ваши бронирования в порядке!</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function cancelBooking(bookingToken) {
+    if (confirm('Вы уверены, что хотите отменить это бронирование?')) {
+        fetch('/api/booking/cancel', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                booking_token: bookingToken,
+                cancel_reason: 'Отменено пользователем через личный кабинет'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('Бронирование успешно отменено');
+                location.reload();
+            } else {
+                alert('Ошибка при отмене: ' + data.error);
+            }
+        })
+        .catch(error => {
+            alert('Ошибка при отмене бронирования');
+        });
+    }
+}
+</script>
+{% endblock %}

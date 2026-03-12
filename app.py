@@ -852,7 +852,7 @@ def send_booking_confirmation_email(booking):
         msg = MIMEMultipart()
         msg['From'] = smtp_username or Config.MAIL_USERNAME
         msg['To'] = booking.guest_email
-        msg['Subject'] = 'Подтверждение бронирования'
+        msg['Subject'] = 'Ваша заявка на бронирование'
         
         # Создаем ссылку для подтверждения бронирования
         confirmation_url = f"{request.host_url}confirm-booking/{booking.booking_token}"
@@ -863,13 +863,13 @@ def send_booking_confirmation_email(booking):
         
         # HTML тело письма
         html_body = f"""
-        <h3>Подтверждение бронирования #{booking.id}</h3>
+        <h3>Заявка на бронирование #{booking.id}</h3>
         <p>Здравствуйте, {booking.guest_name}!</p>
-        <p>Ваше бронирование получено. Для завершения регистрации, пожалуйста, подтвердите ваше бронирование, перейдя по ссылке ниже:</p>
+        <p>Ваша заявка принята. Для завершения регистрации, пожалуйста, подтвердите ваш email и намерение, перейдя по ссылке ниже:</p>
         
         <div style="text-align: center; margin: 30px 0;">
             <a href="{confirmation_url}" style="background-color: #007bff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-size: 16px;">
-                Подтвердить бронирование
+                Подтвердить заявку
             </a>
         </div>
         
@@ -878,7 +878,7 @@ def send_booking_confirmation_email(booking):
             {confirmation_url}
         </p>
         
-        <h4>Детали бронирования:</h4>
+        <h4>Детали заявки:</h4>
         <ul>
             <li><strong>Объект:</strong> {booking.property.name}</li>
             <li><strong>Даты:</strong> {check_in_formatted} - {check_out_formatted}</li>
@@ -886,25 +886,25 @@ def send_booking_confirmation_email(booking):
             <li><strong>Сумма:</strong> {booking.total_price:,.0f} руб.</li>
         </ul>
         
-        <p>Если вы не создавали это бронирование, проигнорируйте это письмо.</p>
+        <p>Если вы не создавали эту заявку, проигнорируйте это письмо.</p>
         """
         
         # Альтернативное текстовое тело для клиентов без поддержки HTML
         text_body = f"""
-        Подтверждение бронирования #{booking.id}
+        Заявка на бронирование #{booking.id}
         
         Здравствуйте, {booking.guest_name}!
         
-        Ваше бронирование получено. Для завершения регистрации, пожалуйста, перейдите по ссылке:
+        Ваша заявка принята. Для завершения регистрации, пожалуйста, перейдите по ссылке:
         {confirmation_url}
         
-        Детали бронирования:
+        Детали заявки:
         - Объект: {booking.property.name}
         - Даты: {check_in_formatted} - {check_out_formatted}
         - Гостей: {booking.guests_count}
         - Сумма: {booking.total_price:,.0f} руб.
         
-        Если вы не создавали это бронирование, проигнорируйте это письмо.
+        Если вы не создавали эту заявку, проигнорируйте это письмо.
         """
         
         # Добавляем оба варианта (HTML и plain text)
@@ -1249,7 +1249,7 @@ def send_booking_info_email(booking_id, subject, header_text):
                 check_out_formatted = format_date_ru(booking.check_out)
 
                 status_display = {
-                    'pending': 'Ожидает',
+                    'pending': 'Заявка',
                     'confirmed': 'Подтверждено',
                     'completed': 'Завершено',
                     'cancelled': 'Отменено'
@@ -2060,8 +2060,127 @@ def confirm_booking(booking_token):
     
     db.session.commit()
     
+    # Отправляем финальное подтверждение
+    try:
+        send_booking_final_confirmation_email(booking)
+    except Exception as e:
+        print(f"Error sending final confirmation email: {e}")
+    
     flash('Бронирование успешно подтверждено! Спасибо за подтверждение.', 'success')
     return redirect(url_for('booking_success', booking_token=booking_token))
+
+@app.route('/my-bookings')
+@login_required
+def my_bookings():
+    """Страница 'Мои заявки' для авторизованных пользователей"""
+    if 'user_id' not in session:
+        flash('Для просмотра заявок необходимо войти в систему', 'warning')
+        return redirect(url_for('public_login'))
+    
+    # Получаем все заявки пользователя, отсортированные по дате создания (новые сверху)
+    user_bookings = Booking.query.filter_by(guest_email=session.get('username')).order_by(Booking.created_at.desc()).all()
+    
+    # Разделяем на заявки и бронирования
+    pending_bookings = [b for b in user_bookings if b.status == 'pending']
+    confirmed_bookings = [b for b in user_bookings if b.status in ['confirmed', 'completed']]
+    cancelled_bookings = [b for b in user_bookings if b.status == 'cancelled']
+    
+    return render_template('my_bookings.html', 
+                         pending_bookings=pending_bookings,
+                         confirmed_bookings=confirmed_bookings,
+                         cancelled_bookings=cancelled_bookings)
+
+def send_booking_final_confirmation_email(booking):
+    """Отправляет email с финальным подтверждением бронирования"""
+    try:
+        # Get SMTP settings from DB or Config
+        settings = SiteSettings.query.first()
+        
+        if settings and settings.smtp_server:
+            smtp_server = settings.smtp_server
+            smtp_port = settings.smtp_port
+            smtp_username = settings.smtp_username
+            smtp_password = settings.smtp_password
+            smtp_use_tls = settings.smtp_use_tls
+        else:
+            smtp_server = Config.MAIL_SERVER
+            smtp_port = Config.MAIL_PORT
+            smtp_username = Config.MAIL_USERNAME
+            smtp_password = Config.MAIL_PASSWORD
+            smtp_use_tls = Config.MAIL_USE_TLS
+
+        if not smtp_server:
+            print("SMTP server not configured")
+            return False
+
+        # Создаем сообщение
+        msg = MIMEMultipart()
+        msg['From'] = smtp_username or Config.MAIL_USERNAME
+        msg['To'] = booking.guest_email
+        msg['Subject'] = f'Бронирование #{booking.id} подтверждено'
+        
+        booking_url = f"{request.host_url}booking/success/{booking.booking_token}"
+        
+        # Форматируем даты
+        check_in_formatted = format_date_ru(booking.check_in)
+        check_out_formatted = format_date_ru(booking.check_out)
+        
+        # HTML тело письма
+        html_body = f"""
+        <h3>Бронирование #{booking.id} подтверждено!</h3>
+        <p>Здравствуйте, {booking.guest_name}!</p>
+        <p>Ваше бронирование успешно подтверждено. Мы ждем вас!</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{booking_url}" style="background-color: #28a745; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-size: 16px;">
+                Посмотреть бронирование
+            </a>
+        </div>
+        
+        <h4>Детали бронирования:</h4>
+        <ul>
+            <li><strong>Объект:</strong> {booking.property.name}</li>
+            <li><strong>Даты:</strong> {check_in_formatted} - {check_out_formatted}</li>
+            <li><strong>Гостей:</strong> {booking.guests_count}</li>
+            <li><strong>Сумма:</strong> {booking.total_price:,.0f} руб.</li>
+        </ul>
+        
+        <p>Сохраните это письмо или ссылку на бронирование.</p>
+        """
+        
+        # Альтернативное текстовое тело
+        text_body = f"""
+        Бронирование #{booking.id} подтверждено!
+        
+        Здравствуйте, {booking.guest_name}!
+        
+        Ваше бронирование успешно подтверждено. Мы ждем вас!
+        
+        Ссылка на бронирование:
+        {booking_url}
+        
+        Детали бронирования:
+        - Объект: {booking.property.name}
+        - Даты: {check_in_formatted} - {check_out_formatted}
+        - Гостей: {booking.guests_count}
+        - Сумма: {booking.total_price:,.0f} руб.
+        """
+        
+        msg.attach(MIMEText(text_body, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
+        
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            if smtp_use_tls:
+                server.starttls()
+            if smtp_username and smtp_password:
+                server.login(smtp_username, smtp_password)
+            server.sendmail(msg['From'], booking.guest_email, msg.as_string())
+        
+        return True
+    except Exception as e:
+        print(f"Ошибка отправки email финального подтверждения: {e}")
+        return False
+
 
 @app.route('/manifest.webmanifest')
 def manifest_webmanifest():
@@ -2230,8 +2349,8 @@ def admin_api_dashboard_stats():
     bookings_json = []
     for b in bookings:
         status_display = {
-            'pending': 'Ожидает',
-            'confirmed': 'Подтверждено',
+            'pending': 'Заявка',
+            'confirmed': 'Бронирование',
             'completed': 'Завершено',
             'cancelled': 'Отменено'
         }.get(b.status, b.status)

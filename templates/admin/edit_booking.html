@@ -29,8 +29,8 @@
                     <div class="col-md-6">
                         <label class="form-label">Статус</label>
                         <select name="status" class="form-select">
-                            <option value="pending" {% if booking and booking.status == 'pending' %}selected{% endif %}>Ожидает</option>
-                            <option value="confirmed" {% if booking and booking.status == 'confirmed' %}selected{% endif %}>Подтверждено</option>
+                            <option value="pending" {% if booking and booking.status == 'pending' %}selected{% endif %}>Заявка</option>
+                            <option value="confirmed" {% if booking and booking.status == 'confirmed' %}selected{% endif %}>Бронирование</option>
                             <option value="cancelled" {% if booking and booking.status == 'cancelled' %}selected{% endif %}>Отменено</option>
                             <option value="completed" {% if booking and booking.status == 'completed' %}selected{% endif %}>Завершено</option>
                         </select>

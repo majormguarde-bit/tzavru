@@ -176,7 +176,7 @@
                         <i class="bi bi-hourglass-split"></i>
                     </div>
                     <div>
-                        <h6 class="text-muted mb-1">Ожидают</h6>
+                        <h6 class="text-muted mb-1">Заявки</h6>
                         <h3 class="mb-0 fw-bold" id="stat-pending-bookings">{{ stats.pending_bookings }}</h3>
                     </div>
                 </div>
@@ -193,10 +193,10 @@
                     <div>
                         <h6 class="text-muted mb-1">Выручка</h6>
                         <div class="d-flex flex-column">
-                            <span class="text-success fw-bold fs-5" title="Подтверждено">
+                            <span class="text-success fw-bold fs-5" title="Подтвержденные бронирования">
                                 <i class="bi bi-check-lg me-1"></i><span id="stat-confirmed-revenue">{{ stats.confirmed_revenue|format_price }}</span> ₽
                             </span>
-                            <span class="text-warning fw-bold small" title="Ожидает">
+                            <span class="text-warning fw-bold small" title="Ожидающие заявки">
                                 <i class="bi bi-hourglass-split me-1"></i><span id="stat-pending-revenue">{{ stats.pending_revenue|format_price }}</span> ₽
                             </span>
                         </div>
@@ -316,9 +316,9 @@
                             <td class="fw-bold">{{ booking.total_price|format_price }} ₽</td>
                             <td>
                                 {% if booking.status == 'pending' %}
-                                    <span class="badge bg-warning text-dark">Ожидает</span>
+                                    <span class="badge bg-warning text-dark">Заявка</span>
                                 {% elif booking.status == 'confirmed' %}
-                                    <span class="badge bg-success">Подтверждено</span>
+                                    <span class="badge bg-success">Бронирование</span>
                                 {% else %}
                                     <span class="badge bg-secondary">Отменено</span>
                                 {% endif %}
