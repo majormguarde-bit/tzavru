@@ -2017,6 +2017,36 @@ def admin_admin_edit(user_id):
         existing_access_ids=existing_access_ids
     )
 
+@app.route('/admin/admins/delete/<int:user_id>', methods=['POST'])
+@superadmin_required
+def admin_admin_delete(user_id):
+    current_user = get_current_admin()
+    admin_to_delete = User.query.get_or_404(user_id)
+    
+    # Prevent self-deletion
+    if admin_to_delete.id == current_user.id:
+        flash('Нельзя удалить самого себя.', 'error')
+        return redirect(url_for('admin_admins'))
+    
+    # Prevent deletion of other superadmins (only current superadmin can delete regular admins)
+    if admin_to_delete.is_superadmin:
+        flash('Нельзя удалить другого суперадмина.', 'error')
+        return redirect(url_for('admin_admins'))
+    
+    # Delete admin property access records
+    AdminPropertyAccess.query.filter_by(user_id=admin_to_delete.id).delete()
+    
+    # Remove admin privileges but keep the user account
+    admin_to_delete.is_admin = False
+    admin_to_delete.is_superadmin = False
+    admin_to_delete.can_create_properties = False
+    admin_to_delete.can_edit_properties = False
+    admin_to_delete.can_delete_properties = False
+    
+    db.session.commit()
+    flash('Права администратора удалены. Пользователь сохранен как обычный пользователь.', 'success')
+    return redirect(url_for('admin_admins'))
+
 @app.route('/admin/logout')
 @login_required
 def logout():
