@@ -75,7 +75,7 @@ app.config['SECRET_KEY'] = 'dev-secret-key-change-this-in-production'
 
 from models import db, User, UnitType, OptionType, CharacteristicType, PropertyOption, \
     PropertyCharacteristic, Property, Review, Booking, BookingDevice, BookingPasskey, \
-    BookingOption, ContactRequest, PropertyType, SiteSettings, AdminPropertyAccess, GuestJournal, ActivityLog
+    BookingOption, AmenityResource, AmenityReservation, AmenityResourceType, ContactRequest, PropertyType, SiteSettings, AdminPropertyAccess, GuestJournal, ActivityLog
 
 # Initialize db with app
 db.init_app(app)
@@ -1190,13 +1190,13 @@ def generate_invoice_pdf(booking):
     # Options
     if booking.selected_options:
         for option in booking.selected_options:
-            opt_total = option.price * option.quantity * days
+            opt_total = option.price * option.quantity
             unit = "шт."
             if option.option_type and option.option_type.unit_type:
                 unit = option.option_type.unit_type.short_name
             
             c.drawString(2*cm, y, f"{option.option_name}")
-            c.drawString(10*cm, y, f"{option.quantity} {unit} x {days} дн.")
+            c.drawString(10*cm, y, f"{option.quantity} {unit}")
             c.drawString(13*cm, y, f"{option.price:,.2f} руб.")
             c.drawString(16*cm, y, f"{opt_total:,.2f} руб.")
             y -= 0.6*cm
@@ -1234,14 +1234,13 @@ def send_booking_info_email(booking_id, subject, header_text):
                 # Options logic
                 selected_options_html = ''
                 if booking.selected_options:
-                    option_days = (booking.check_out - booking.check_in).days
                     options_list = []
                     for item in booking.selected_options:
                         unit = "шт."
                         if item.option_type and item.option_type.unit_type:
                             unit = item.option_type.unit_type.short_name
-                        price_total = item.price * item.quantity * option_days
-                        options_list.append(f"{item.option_name} ({item.quantity} {unit} × {option_days} ночей, +{price_total:,.0f} руб.)")
+                        price_total = item.price * item.quantity
+                        options_list.append(f"{item.option_name} ({item.quantity} {unit}, +{price_total:,.0f} руб.)")
                     selected_options_html = '<p><strong>Опции:</strong><br>' + '<br>'.join(options_list) + '</p>'
 
                 success_url = url_for('booking_success', booking_token=booking.booking_token, _external=True)
@@ -1626,12 +1625,14 @@ def api_booking_cancel():
         
     if booking.status == 'cancelled':
         return jsonify({'status': 'ok', 'message': 'Бронирование уже отменено'})
-        
+
+    old_status = booking.status
     booking.status = 'cancelled'
     cancel_reason = payload.get('cancel_reason')
     if cancel_reason:
         booking.cancel_reason = cancel_reason
-        
+
+    _sync_amenity_reservations_for_booking_status(booking.id, old_status, booking.status)
     db.session.commit()
     
     # Notify admin via Telegram if available
@@ -1684,6 +1685,14 @@ def captcha():
 def booking(property_id):
     property = Property.query.get_or_404(property_id)
     property_options = sorted(property.property_options, key=lambda po: po.option_type.name.lower())
+    amenity_resources = AmenityResource.query.filter(
+        AmenityResource.property_id == property_id,
+        AmenityResource.is_active == True
+    ).order_by(AmenityResource.name.asc()).all()
+    time_options = []
+    for h in range(0, 24):
+        for m in (0, 30):
+            time_options.append(f'{h:02d}:{m:02d}')
     
     # Get current user for template
     current_user_obj = None
@@ -1820,7 +1829,7 @@ def booking(property_id):
                     'price': option_price,
                     'quantity': option_qty
                 })
-                options_total += option_price * option_qty * days
+                options_total += option_price * option_qty
 
             total_price = days * guests_count * property.price_per_night + options_total
 
@@ -1858,6 +1867,84 @@ def booking(property_id):
                     quantity=selected_option['quantity']
                 ))
 
+            amenity_resource_id_raw = (request.form.get('amenity_resource_id') or '').strip()
+            if amenity_resource_id_raw:
+                try:
+                    amenity_resource_id = int(amenity_resource_id_raw)
+                    amenity_date_str = request.form.get('amenity_date', '').strip()
+                    amenity_time_str = request.form.get('amenity_time', '').strip()
+                    amenity_duration_minutes = int(request.form.get('amenity_duration_minutes', '0'))
+                    amenity_notes = (request.form.get('amenity_notes') or '').strip()
+                except Exception:
+                    msg = 'Некорректные данные дополнительной услуги.'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                resource = AmenityResource.query.get_or_404(amenity_resource_id)
+                if not resource.is_active or resource.property_id != property_id:
+                    msg = 'Ресурс недоступен для выбранного объекта.'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                if amenity_duration_minutes <= 0 or amenity_duration_minutes % resource.slot_minutes != 0:
+                    msg = 'Длительность услуги должна быть кратна шагу слота.'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                try:
+                    start_dt = datetime.strptime(f'{amenity_date_str} {amenity_time_str}', '%Y-%m-%d %H:%M')
+                except Exception:
+                    msg = 'Некорректные дата/время услуги.'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                end_dt = start_dt + timedelta(minutes=amenity_duration_minutes)
+
+                if start_dt.date() < check_in or start_dt.date() >= check_out:
+                    msg = 'Время услуги должно быть в период проживания.'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                if end_dt.date() >= check_out:
+                    msg = 'Время услуги должно быть в период проживания.'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                if start_dt.time() < resource.open_time or end_dt.time() > resource.close_time:
+                    msg = 'Выбранное время выходит за часы работы ресурса.'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                if start_dt.minute % resource.slot_minutes != 0:
+                    msg = 'Время начала должно совпадать с шагом слота.'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                conflict = _find_amenity_conflict(resource, start_dt, end_dt, statuses=['requested', 'approved', 'completed'])
+                if conflict:
+                    msg = 'Выбранное время уже занято (с учетом техперерыва).'
+                    if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                    flash(msg, 'error')
+                    return redirect(url_for('booking', property_id=property_id))
+
+                db.session.add(AmenityReservation(
+                    resource_id=resource.id,
+                    booking_id=booking.id,
+                    start_dt=start_dt,
+                    end_dt=end_dt,
+                    status='requested',
+                    price_total=0.0,
+                    notes=amenity_notes
+                ))
+
             db.session.commit()
             
             # Send booking confirmation email with clickable link
@@ -1889,21 +1976,15 @@ def booking(property_id):
             try:
                 selected_options_html = ''
                 if booking.selected_options:
-                    option_days = (booking.check_out - booking.check_in).days
-                    
                     options_list = []
                     for item in booking.selected_options:
                         unit = "шт."
                         if item.option_type and item.option_type.unit_type:
                             unit = item.option_type.unit_type.short_name
-                        
-                        price_total = item.price * item.quantity * option_days
-                        options_list.append(f"{item.option_name} ({item.quantity} {unit} × {option_days} ночей, +{price_total:,.0f} руб.)")
+                        price_total = item.price * item.quantity
+                        options_list.append(f"{item.option_name} ({item.quantity} {unit}, +{price_total:,.0f} руб.)")
                         
                     selected_options_html = '<p><strong>Опции:</strong><br>' + '<br>'.join(options_list) + '</p>'
-
-                success_url = url_for('booking_success', booking_token=booking.booking_token, _external=True)
-                
                 check_in_formatted = format_date_ru(booking.check_in)
                 check_out_formatted = format_date_ru(booking.check_out)
                 
@@ -1990,16 +2071,13 @@ def booking(property_id):
                 try:
                     selected_options_tg = ''
                     if booking.selected_options:
-                        option_days = (booking.check_out - booking.check_in).days
-                        
                         tg_options_list = []
                         for item in booking.selected_options:
                             unit = "шт."
                             if item.option_type and item.option_type.unit_type:
                                 unit = item.option_type.unit_type.short_name
-                            
-                            price_total = item.price * item.quantity * option_days
-                            tg_options_list.append(f"{item.option_name} ({item.quantity} {unit} × {option_days}, +{price_total:,.0f} руб.)")
+                            price_total = item.price * item.quantity
+                            tg_options_list.append(f"{item.option_name} ({item.quantity} {unit}, +{price_total:,.0f} руб.)")
                             
                         selected_options_tg = '\n🧩 <b>Опции:</b> ' + ', '.join(tg_options_list)
 
@@ -2043,7 +2121,7 @@ def booking(property_id):
             flash(msg, 'error')
             return redirect(url_for('booking', property_id=property_id))
             
-    return render_template('booking.html', property=property, captcha_question=captcha_question, property_options=property_options, current_user_obj=current_user_obj)
+    return render_template('booking.html', property=property, captcha_question=captcha_question, property_options=property_options, current_user_obj=current_user_obj, amenity_resources=amenity_resources, time_options=time_options)
 
 @app.route('/booking/success/<booking_token>', endpoint='booking_success')
 def booking_success(booking_token):
@@ -2097,7 +2175,6 @@ def my_bookings():
         flash('Пользователь не найден', 'error')
         return redirect(url_for('public_login'))
     
-    # Получаем все заявки пользователя по email, отсортированные по дате создания (новые сверху)
     user_bookings = Booking.query.filter_by(guest_email=current_user.email).order_by(Booking.created_at.desc()).all()
     
     # Разделяем на заявки и бронирования
@@ -2105,10 +2182,216 @@ def my_bookings():
     confirmed_bookings = [b for b in user_bookings if b.status in ['confirmed', 'completed']]
     cancelled_bookings = [b for b in user_bookings if b.status == 'cancelled']
     
-    return render_template('my_bookings.html', 
+    booking_ids = [b.id for b in user_bookings]
+    property_ids = list({b.property_id for b in user_bookings})
+
+    resources_by_property = {}
+    if property_ids:
+        resources = AmenityResource.query.filter(
+            AmenityResource.property_id.in_(property_ids),
+            AmenityResource.is_active == True
+        ).order_by(AmenityResource.name.asc()).all()
+        for r in resources:
+            resources_by_property.setdefault(r.property_id, []).append(r)
+
+    reservations_by_booking = {}
+    if booking_ids:
+        reservations = AmenityReservation.query.filter(
+            AmenityReservation.booking_id.in_(booking_ids)
+        ).order_by(AmenityReservation.start_dt.asc()).all()
+        for r in reservations:
+            reservations_by_booking.setdefault(r.booking_id, []).append(r)
+
+    booking_date_bounds = {}
+    for b in user_bookings:
+        max_date = b.check_out - timedelta(days=1)
+        booking_date_bounds[b.id] = {
+            'min': b.check_in.strftime('%Y-%m-%d'),
+            'max': max_date.strftime('%Y-%m-%d')
+        }
+
+    time_options = []
+    for h in range(0, 24):
+        for m in (0, 30):
+            time_options.append(f'{h:02d}:{m:02d}')
+
+    return render_template('my_bookings.html',
                          pending_bookings=pending_bookings,
                          confirmed_bookings=confirmed_bookings,
-                         cancelled_bookings=cancelled_bookings)
+                         cancelled_bookings=cancelled_bookings,
+                         resources_by_property=resources_by_property,
+                         reservations_by_booking=reservations_by_booking,
+                         booking_date_bounds=booking_date_bounds,
+                         time_options=time_options)
+
+def _find_amenity_conflict(resource, start_dt, end_dt, exclude_reservation_id=None, statuses=None):
+    statuses = statuses or ['requested', 'approved', 'completed']
+    start_minus = start_dt - timedelta(minutes=resource.buffer_before_minutes)
+    end_plus = end_dt + timedelta(minutes=resource.buffer_after_minutes)
+
+    q = AmenityReservation.query.filter(
+        AmenityReservation.resource_id == resource.id,
+        AmenityReservation.status.in_(statuses),
+        AmenityReservation.start_dt < end_plus,
+        AmenityReservation.end_dt > start_minus
+    )
+    if exclude_reservation_id is not None:
+        q = q.filter(AmenityReservation.id != exclude_reservation_id)
+    return q.first()
+
+def _generate_amenity_slots_for_day(resource, day, reservations):
+    open_dt = datetime.combine(day, resource.open_time)
+    close_dt = datetime.combine(day, resource.close_time)
+    step = timedelta(minutes=resource.slot_minutes)
+
+    blocking_reservations = [r for r in reservations if r.status != 'cancelled']
+
+    slots = []
+    current = open_dt
+    while current + step <= close_dt:
+        slot_end = current + step
+        blocking = None
+        blocked_kind = None
+
+        for r in blocking_reservations:
+            start_minus = r.start_dt - timedelta(minutes=resource.buffer_before_minutes)
+            end_plus = r.end_dt + timedelta(minutes=resource.buffer_after_minutes)
+            if start_minus < slot_end and end_plus > current:
+                blocking = r
+                if r.start_dt < slot_end and r.end_dt > current:
+                    blocked_kind = 'reservation'
+                else:
+                    blocked_kind = 'buffer'
+                break
+
+        slots.append({
+            'start': current,
+            'end': slot_end,
+            'available': blocking is None,
+            'blocking': blocking,
+            'blocked_kind': blocked_kind
+        })
+        current = slot_end
+
+    return slots
+
+def _sync_amenity_reservations_for_booking_status(booking_id, old_status, new_status):
+    if old_status == new_status:
+        return
+
+    now = datetime.utcnow()
+
+    if new_status == 'cancelled':
+        AmenityReservation.query.filter(
+            AmenityReservation.booking_id == booking_id,
+            AmenityReservation.status.in_(['requested', 'approved'])
+        ).update({'status': 'cancelled', 'updated_at': now}, synchronize_session=False)
+        return
+
+    if new_status == 'completed':
+        AmenityReservation.query.filter(
+            AmenityReservation.booking_id == booking_id,
+            AmenityReservation.status == 'approved'
+        ).update({'status': 'completed', 'updated_at': now}, synchronize_session=False)
+        AmenityReservation.query.filter(
+            AmenityReservation.booking_id == booking_id,
+            AmenityReservation.status == 'requested'
+        ).update({'status': 'cancelled', 'updated_at': now}, synchronize_session=False)
+        return
+
+def _cancel_amenity_reservations_outside_booking(booking_id, check_in, check_out):
+    check_in_dt = datetime.combine(check_in, datetime.min.time())
+    check_out_dt = datetime.combine(check_out, datetime.min.time())
+    now = datetime.utcnow()
+
+    AmenityReservation.query.filter(
+        AmenityReservation.booking_id == booking_id,
+        AmenityReservation.status.in_(['requested', 'approved']),
+        or_(
+            AmenityReservation.start_dt < check_in_dt,
+            AmenityReservation.start_dt >= check_out_dt,
+            AmenityReservation.end_dt > check_out_dt
+        )
+    ).update({'status': 'cancelled', 'updated_at': now}, synchronize_session=False)
+
+@app.route('/amenities/request/<booking_token>', methods=['POST'])
+@login_required
+def request_amenity(booking_token):
+    if 'user_id' not in session:
+        flash('Для заказа услуги необходимо войти в систему', 'warning')
+        return redirect(url_for('public_login'))
+
+    current_user = User.query.get(session['user_id'])
+    if not current_user:
+        flash('Пользователь не найден', 'error')
+        return redirect(url_for('public_login'))
+
+    booking = Booking.query.filter_by(booking_token=booking_token).first_or_404()
+    if booking.guest_email != current_user.email:
+        flash('Недостаточно прав для заказа услуги по этой заявке.', 'error')
+        return redirect(url_for('my_bookings'))
+
+    try:
+        resource_id = int(request.form['resource_id'])
+        date_str = request.form['date']
+        time_str = request.form['time']
+        duration_minutes = int(request.form['duration_minutes'])
+        notes = request.form.get('notes', '').strip()
+    except Exception:
+        flash('Некорректные данные формы.', 'error')
+        return redirect(url_for('my_bookings'))
+
+    resource = AmenityResource.query.get_or_404(resource_id)
+    if not resource.is_active or resource.property_id != booking.property_id:
+        flash('Ресурс недоступен для выбранного объекта.', 'error')
+        return redirect(url_for('my_bookings'))
+
+    if duration_minutes <= 0 or duration_minutes % resource.slot_minutes != 0:
+        flash('Длительность должна быть кратна шагу слота.', 'error')
+        return redirect(url_for('my_bookings'))
+
+    start_dt = datetime.strptime(f'{date_str} {time_str}', '%Y-%m-%d %H:%M')
+    end_dt = start_dt + timedelta(minutes=duration_minutes)
+
+    if start_dt.date() < booking.check_in or start_dt.date() >= booking.check_out:
+        flash('Время услуги должно быть в период проживания.', 'error')
+        return redirect(url_for('my_bookings'))
+
+    if end_dt.date() >= booking.check_out:
+        flash('Время услуги должно быть в период проживания.', 'error')
+        return redirect(url_for('my_bookings'))
+
+    if start_dt.time() < resource.open_time or end_dt.time() > resource.close_time:
+        flash('Выбранное время выходит за часы работы ресурса.', 'error')
+        return redirect(url_for('my_bookings'))
+
+    if start_dt.minute % resource.slot_minutes != 0:
+        flash('Время начала должно совпадать с шагом слота.', 'error')
+        return redirect(url_for('my_bookings'))
+
+    conflict = _find_amenity_conflict(resource, start_dt, end_dt, statuses=['requested', 'approved', 'completed'])
+    if conflict:
+        flash('Выбранное время уже занято (с учетом техперерыва).', 'error')
+        return redirect(url_for('my_bookings'))
+
+    try:
+        reservation = AmenityReservation(
+            resource_id=resource.id,
+            booking_id=booking.id,
+            start_dt=start_dt,
+            end_dt=end_dt,
+            status='requested',
+            price_total=0.0,
+            notes=notes
+        )
+        db.session.add(reservation)
+        db.session.commit()
+        flash('Запрос на услугу отправлен.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка создания запроса: {e}', 'error')
+
+    return redirect(url_for('my_bookings'))
 
 @app.route('/sitemap.xml')
 def sitemap():
@@ -3198,7 +3481,9 @@ def admin_booking_confirm(booking_id):
 @admin_required
 def admin_booking_cancel(booking_id):
     booking = Booking.query.get_or_404(booking_id)
+    old_status = booking.status
     booking.status = 'cancelled'
+    _sync_amenity_reservations_for_booking_status(booking.id, old_status, booking.status)
     db.session.commit()
     
     # Send email notification
@@ -3267,6 +3552,10 @@ def admin_booking_edit(booking_id):
     
     if request.method == 'POST':
         try:
+            old_property_id = booking.property_id
+            old_check_in = booking.check_in
+            old_check_out = booking.check_out
+
             booking.property_id = int(request.form['property_id'])
             booking.check_in = datetime.strptime(request.form['check_in'], '%Y-%m-%d').date()
             booking.check_out = datetime.strptime(request.form['check_out'], '%Y-%m-%d').date()
@@ -3300,6 +3589,15 @@ def admin_booking_edit(booking_id):
             if not booking.booking_token:
                 booking.booking_token = _generate_token()
             
+            if old_property_id != booking.property_id:
+                AmenityReservation.query.filter(
+                    AmenityReservation.booking_id == booking.id,
+                    AmenityReservation.status.in_(['requested', 'approved'])
+                ).update({'status': 'cancelled', 'updated_at': datetime.utcnow()}, synchronize_session=False)
+            elif old_check_in != booking.check_in or old_check_out != booking.check_out:
+                _cancel_amenity_reservations_outside_booking(booking.id, booking.check_in, booking.check_out)
+
+            _sync_amenity_reservations_for_booking_status(booking.id, old_status, booking.status)
             db.session.commit()
 
             # Send notification if status changed
@@ -3440,6 +3738,389 @@ def admin_booking_delete(booking_id):
         flash(f'Ошибка при удалении: {str(e)}', 'error')
         
     return redirect(url_for('admin_bookings'))
+
+@app.route('/admin/amenity-resources')
+@admin_required
+def admin_amenity_resources():
+    user = get_current_admin()
+    resources_query = AmenityResource.query
+
+    if user and not user.is_superadmin:
+        accessible_ids = db.session.query(AdminPropertyAccess.property_id).filter(AdminPropertyAccess.user_id == user.id).all()
+        accessible_ids = [pid[0] for pid in accessible_ids]
+        resources_query = resources_query.filter(
+            or_(
+                AmenityResource.property_id.in_(accessible_ids),
+                AmenityResource.property.has(Property.owner_id == user.id)
+            )
+        )
+
+    resources = resources_query.order_by(AmenityResource.property_id.asc(), AmenityResource.name.asc()).all()
+    resource_types = AmenityResourceType.query.order_by(AmenityResourceType.name.asc()).all()
+    time_options = []
+    for h in range(0, 24):
+        for m in (0, 30):
+            time_options.append(f'{h:02d}:{m:02d}')
+    properties_query = Property.query
+    if user and not user.is_superadmin:
+        accessible_ids = db.session.query(AdminPropertyAccess.property_id).filter(AdminPropertyAccess.user_id == user.id).all()
+        accessible_ids = [pid[0] for pid in accessible_ids]
+        properties_query = properties_query.filter(
+            or_(
+                Property.id.in_(accessible_ids),
+                Property.owner_id == user.id
+            )
+        )
+    properties = properties_query.order_by(Property.name.asc()).all()
+    return render_template('admin/amenity_resources.html', resources=resources, properties=properties, resource_types=resource_types, time_options=time_options)
+
+@app.route('/admin/dictionaries/amenity-resource-types')
+@admin_required
+def admin_amenity_resource_types():
+    user = get_current_admin()
+    can_edit = admin_can_edit_reference_data(user)
+    types = AmenityResourceType.query.order_by(AmenityResourceType.name.asc()).all()
+    return render_template('admin/amenity_resource_types.html', types=types, can_edit=can_edit)
+
+@app.route('/admin/dictionaries/amenity-resource-types/add', methods=['POST'])
+@admin_required
+def admin_amenity_resource_type_add():
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для редактирования справочных данных', 'error')
+        return redirect(url_for('admin_amenity_resource_types'))
+
+    name = (request.form.get('name') or '').strip()
+    if not name:
+        flash('Укажите название типа.', 'error')
+        return redirect(url_for('admin_amenity_resource_types'))
+
+    try:
+        t = AmenityResourceType(name=name, is_active=True)
+        db.session.add(t)
+        db.session.commit()
+        flash('Тип добавлен.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка добавления типа: {e}', 'error')
+    return redirect(url_for('admin_amenity_resource_types'))
+
+@app.route('/admin/dictionaries/amenity-resource-types/edit/<int:type_id>', methods=['POST'])
+@admin_required
+def admin_amenity_resource_type_edit(type_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для редактирования справочных данных', 'error')
+        return redirect(url_for('admin_amenity_resource_types'))
+
+    t = AmenityResourceType.query.get_or_404(type_id)
+    name = (request.form.get('name') or '').strip()
+    if not name:
+        flash('Укажите название типа.', 'error')
+        return redirect(url_for('admin_amenity_resource_types'))
+
+    try:
+        t.name = name
+        db.session.commit()
+        flash('Тип обновлен.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка обновления типа: {e}', 'error')
+    return redirect(url_for('admin_amenity_resource_types'))
+
+@app.route('/admin/dictionaries/amenity-resource-types/toggle/<int:type_id>', methods=['POST'])
+@admin_required
+def admin_amenity_resource_type_toggle(type_id):
+    user = get_current_admin()
+    if not admin_can_edit_reference_data(user):
+        flash('Недостаточно прав для редактирования справочных данных', 'error')
+        return redirect(url_for('admin_amenity_resource_types'))
+
+    t = AmenityResourceType.query.get_or_404(type_id)
+    try:
+        t.is_active = not bool(t.is_active)
+        db.session.commit()
+        flash('Статус типа обновлен.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка обновления статуса: {e}', 'error')
+    return redirect(url_for('admin_amenity_resource_types'))
+
+@app.route('/admin/amenity-resources/add', methods=['POST'])
+@admin_required
+def admin_amenity_resource_add():
+    user = get_current_admin()
+    try:
+        property_id = int(request.form['property_id'])
+        property_obj = Property.query.get_or_404(property_id)
+        if not admin_can_access_property(user, property_obj):
+            flash('Недостаточно прав для добавления ресурса для этого объекта.', 'error')
+            return redirect(url_for('admin_amenity_resources'))
+
+        open_time_val = datetime.strptime(request.form.get('open_time', '08:00'), '%H:%M').time()
+        close_time_val = datetime.strptime(request.form.get('close_time', '23:00'), '%H:%M').time()
+        resource_type_id = int(request.form['resource_type_id'])
+        resource_type_obj = AmenityResourceType.query.get_or_404(resource_type_id)
+
+        resource = AmenityResource(
+            property_id=property_id,
+            name=request.form['name'].strip(),
+            resource_type=resource_type_obj.name,
+            resource_type_id=resource_type_obj.id,
+            is_active=bool(request.form.get('is_active')),
+            slot_minutes=int(request.form.get('slot_minutes', 30)),
+            buffer_before_minutes=int(request.form.get('buffer_before_minutes', 0)),
+            buffer_after_minutes=int(request.form.get('buffer_after_minutes', 0)),
+            open_time=open_time_val,
+            close_time=close_time_val
+        )
+        db.session.add(resource)
+        db.session.commit()
+        flash('Ресурс добавлен.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка добавления ресурса: {e}', 'error')
+    return redirect(url_for('admin_amenity_resources'))
+
+@app.route('/admin/amenity-resources/<int:resource_id>/edit', methods=['POST'])
+@admin_required
+def admin_amenity_resource_edit(resource_id):
+    user = get_current_admin()
+    resource = AmenityResource.query.get_or_404(resource_id)
+    if not admin_can_access_property(user, resource.property):
+        flash('Недостаточно прав.', 'error')
+        return redirect(url_for('admin_amenity_resources'))
+
+    try:
+        open_time_val = datetime.strptime(request.form.get('open_time', '08:00'), '%H:%M').time()
+        close_time_val = datetime.strptime(request.form.get('close_time', '23:00'), '%H:%M').time()
+        resource_type_id = int(request.form['resource_type_id'])
+        resource_type_obj = AmenityResourceType.query.get_or_404(resource_type_id)
+        resource.name = request.form['name'].strip()
+        resource.resource_type = resource_type_obj.name
+        resource.resource_type_id = resource_type_obj.id
+        resource.is_active = bool(request.form.get('is_active'))
+        resource.slot_minutes = int(request.form.get('slot_minutes', 30))
+        resource.buffer_before_minutes = int(request.form.get('buffer_before_minutes', 0))
+        resource.buffer_after_minutes = int(request.form.get('buffer_after_minutes', 0))
+        resource.open_time = open_time_val
+        resource.close_time = close_time_val
+        db.session.commit()
+        flash('Ресурс обновлен.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка обновления ресурса: {e}', 'error')
+    return redirect(url_for('admin_amenity_resources'))
+
+@app.route('/admin/amenity-resources/<int:resource_id>/delete', methods=['POST'])
+@admin_required
+def admin_amenity_resource_delete(resource_id):
+    user = get_current_admin()
+    resource = AmenityResource.query.get_or_404(resource_id)
+    if not admin_can_access_property(user, resource.property):
+        flash('Недостаточно прав.', 'error')
+        return redirect(url_for('admin_amenity_resources'))
+    try:
+        db.session.delete(resource)
+        db.session.commit()
+        flash('Ресурс удален.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка удаления ресурса: {e}', 'error')
+    return redirect(url_for('admin_amenity_resources'))
+
+@app.route('/admin/amenity-resources/<int:resource_id>/schedule')
+@admin_required
+def admin_amenity_resource_schedule(resource_id):
+    user = get_current_admin()
+    resource = AmenityResource.query.get_or_404(resource_id)
+    if not admin_can_access_property(user, resource.property):
+        flash('Недостаточно прав.', 'error')
+        return redirect(url_for('admin_amenity_resources'))
+
+    date_str = request.args.get('date')
+    if date_str:
+        day = datetime.strptime(date_str, '%Y-%m-%d').date()
+    else:
+        day = datetime.now().date()
+        date_str = day.strftime('%Y-%m-%d')
+
+    start_dt = datetime.combine(day, datetime.min.time())
+    end_dt = start_dt + timedelta(days=1)
+
+    reservations = AmenityReservation.query.filter(
+        AmenityReservation.resource_id == resource.id,
+        AmenityReservation.start_dt < end_dt,
+        AmenityReservation.end_dt > start_dt
+    ).order_by(AmenityReservation.start_dt.asc()).all()
+
+    day_bookings = Booking.query.filter(
+        Booking.property_id == resource.property_id,
+        Booking.status != 'cancelled',
+        Booking.check_in <= day,
+        Booking.check_out > day
+    ).order_by(Booking.check_in.asc(), Booking.id.asc()).all()
+
+    slots = _generate_amenity_slots_for_day(resource, day, reservations)
+
+    return render_template(
+        'admin/amenity_schedule.html',
+        resource=resource,
+        reservations=reservations,
+        slots=slots,
+        day_bookings=day_bookings,
+        date_str=date_str
+    )
+
+@app.route('/admin/amenity-resources/<int:resource_id>/reservations/create', methods=['POST'])
+@admin_required
+def admin_amenity_reservation_create(resource_id):
+    user = get_current_admin()
+    resource = AmenityResource.query.get_or_404(resource_id)
+    if not admin_can_access_property(user, resource.property):
+        flash('Недостаточно прав.', 'error')
+        return redirect(url_for('admin_amenity_resources'))
+
+    date_str = (request.form.get('date') or '').strip()
+    booking_id_raw = (request.form.get('booking_id') or '').strip()
+    start_raw = (request.form.get('start_dt') or '').strip()
+    end_raw = (request.form.get('end_dt') or '').strip()
+    notes = (request.form.get('notes') or '').strip()
+
+    if not booking_id_raw or not start_raw:
+        flash('Некорректные данные формы.', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    try:
+        booking_id = int(booking_id_raw)
+        start_dt = datetime.fromisoformat(start_raw)
+        if end_raw:
+            end_dt = datetime.fromisoformat(end_raw)
+        else:
+            end_dt = start_dt + timedelta(minutes=resource.slot_minutes)
+    except Exception:
+        flash('Некорректные данные формы.', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    booking = Booking.query.get(booking_id)
+    if not booking:
+        flash('Бронирование не найдено.', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    if booking.property_id != resource.property_id:
+        flash('Бронирование относится к другому объекту.', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    if booking.status == 'cancelled':
+        flash('Нельзя записать услугу на отмененное бронирование.', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    if start_dt.date() < booking.check_in or start_dt.date() >= booking.check_out or end_dt.date() >= booking.check_out:
+        flash('Время услуги должно быть в период проживания.', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    if start_dt.time() < resource.open_time or end_dt.time() > resource.close_time:
+        flash('Выбранное время выходит за часы работы ресурса.', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    duration_minutes = int((end_dt - start_dt).total_seconds() / 60)
+    if duration_minutes <= 0 or duration_minutes % resource.slot_minutes != 0:
+        flash('Длительность должна быть кратна шагу слота.', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    if start_dt.minute % resource.slot_minutes != 0:
+        flash('Время начала должно совпадать с шагом слота.', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    conflict = _find_amenity_conflict(resource, start_dt, end_dt, statuses=['requested', 'approved', 'completed'])
+    if conflict:
+        flash('Выбранное время уже занято (с учетом техперерыва).', 'error')
+        return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+    try:
+        reservation = AmenityReservation(
+            resource_id=resource.id,
+            booking_id=booking.id,
+            start_dt=start_dt,
+            end_dt=end_dt,
+            status='approved',
+            price_total=0.0,
+            notes=notes
+        )
+        db.session.add(reservation)
+        db.session.commit()
+        flash('Запись создана.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка создания записи: {e}', 'error')
+
+    return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=date_str or None))
+
+@app.route('/admin/amenity-reservations/<int:reservation_id>/approve', methods=['POST'])
+@admin_required
+def admin_amenity_reservation_approve(reservation_id):
+    user = get_current_admin()
+    reservation = AmenityReservation.query.get_or_404(reservation_id)
+    resource = reservation.resource
+    if not admin_can_access_property(user, resource.property):
+        flash('Недостаточно прав.', 'error')
+        return redirect(url_for('admin_amenity_resources'))
+
+    try:
+        conflict = _find_amenity_conflict(
+            resource,
+            reservation.start_dt,
+            reservation.end_dt,
+            exclude_reservation_id=reservation.id,
+            statuses=['requested', 'approved', 'completed']
+        )
+        if conflict:
+            flash('Нельзя подтвердить: есть пересечение по времени (с учетом техперерыва).', 'error')
+        else:
+            reservation.status = 'approved'
+            db.session.commit()
+            flash('Услуга подтверждена.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка подтверждения: {e}', 'error')
+
+    return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=request.args.get('date')))
+
+@app.route('/admin/amenity-reservations/<int:reservation_id>/cancel', methods=['POST'])
+@admin_required
+def admin_amenity_reservation_cancel(reservation_id):
+    user = get_current_admin()
+    reservation = AmenityReservation.query.get_or_404(reservation_id)
+    resource = reservation.resource
+    if not admin_can_access_property(user, resource.property):
+        flash('Недостаточно прав.', 'error')
+        return redirect(url_for('admin_amenity_resources'))
+    try:
+        reservation.status = 'cancelled'
+        db.session.commit()
+        flash('Услуга отменена.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка отмены: {e}', 'error')
+    return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=request.args.get('date')))
+
+@app.route('/admin/amenity-reservations/<int:reservation_id>/complete', methods=['POST'])
+@admin_required
+def admin_amenity_reservation_complete(reservation_id):
+    user = get_current_admin()
+    reservation = AmenityReservation.query.get_or_404(reservation_id)
+    resource = reservation.resource
+    if not admin_can_access_property(user, resource.property):
+        flash('Недостаточно прав.', 'error')
+        return redirect(url_for('admin_amenity_resources'))
+    try:
+        reservation.status = 'completed'
+        db.session.commit()
+        flash('Услуга отмечена как выполненная.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Ошибка: {e}', 'error')
+    return redirect(url_for('admin_amenity_resource_schedule', resource_id=resource.id, date=request.args.get('date')))
 
 @app.route('/admin/reviews')
 @admin_required

@@ -45,6 +45,9 @@
                 <a href="{{ url_for('admin_bookings') }}" class="list-group-item list-group-item-action {% if 'booking' in request.endpoint %}active{% endif %}">
                     <i class="bi bi-calendar-check"></i> Бронирования
                 </a>
+                <a href="{{ url_for('admin_amenity_resources') }}" class="list-group-item list-group-item-action {% if 'admin_amenity_' in request.endpoint %}active{% endif %}">
+                    <i class="bi bi-calendar2-week"></i> Ресурсы
+                </a>
                 <a href="{{ url_for('admin_contacts') }}" class="list-group-item list-group-item-action {% if 'contact' in request.endpoint %}active{% endif %}">
                     <i class="bi bi-envelope"></i> Сообщения
                 </a>
@@ -88,9 +91,12 @@
                 <a class="list-group-item list-group-item-action" data-bs-toggle="collapse" href="#dictionariesSubmenu" role="button" aria-expanded="false" aria-controls="dictionariesSubmenu">
                     <i class="bi bi-journal-bookmark"></i> Справочники <i class="bi bi-chevron-down ms-auto" style="font-size: 0.8em;"></i>
                 </a>
-                <div class="collapse {% if 'property_types' in request.endpoint or 'characteristic' in request.endpoint or 'option' in request.endpoint or 'unit' in request.endpoint %}show{% endif %}" id="dictionariesSubmenu">
+                <div class="collapse {% if 'property_types' in request.endpoint or 'characteristic' in request.endpoint or 'option' in request.endpoint or 'unit' in request.endpoint or 'amenity_resource_type' in request.endpoint %}show{% endif %}" id="dictionariesSubmenu">
                     <a href="{{ url_for('admin_property_types') }}" class="list-group-item list-group-item-action ps-5 py-2 small {% if 'property_types' in request.endpoint %}active{% endif %}">
                         <i class="bi bi-collection me-2"></i> Типы объектов
+                    </a>
+                    <a href="{{ url_for('admin_amenity_resource_types') }}" class="list-group-item list-group-item-action ps-5 py-2 small {% if 'amenity_resource_type' in request.endpoint %}active{% endif %}">
+                        <i class="bi bi-tags me-2"></i> Типы ресурсов
                     </a>
                     <a href="{{ url_for('admin_characteristics') }}" class="list-group-item list-group-item-action ps-5 py-2 small {% if 'characteristic' in request.endpoint %}active{% endif %}">
                         <i class="bi bi-rulers me-2"></i> Характеристики
