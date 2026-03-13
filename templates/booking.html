@@ -255,7 +255,7 @@
                                                     </select>
                                                 </div>
                                                 <div class="col-12 col-md-6">
-                                                    <input type="number" name="amenity_duration_minutes" id="amenity_duration_minutes" class="form-control" min="30" step="30" value="60" disabled>
+                                                    <input type="number" name="amenity_duration_hours" id="amenity_duration_hours" class="form-control" min="0.5" step="0.5" value="1" disabled>
                                                 </div>
                                                 <div class="col-12 col-md-6">
                                                     <input type="text" name="amenity_notes" class="form-control" placeholder="Комментарий (необязательно)" disabled>
@@ -654,7 +654,7 @@
     const amenityResourceSelect = bookingForm.querySelector('select[name="amenity_resource_id"]');
     const amenityDateInput = document.getElementById('amenity_date');
     const amenityTimeSelect = document.getElementById('amenity_time');
-    const amenityDurationInput = document.getElementById('amenity_duration_minutes');
+    const amenityDurationInput = document.getElementById('amenity_duration_hours');
     const amenityNotesInput = bookingForm.querySelector('input[name="amenity_notes"]');
     const hasCoordinates = propertyLatitude !== null && propertyLongitude !== null;
     const coordinatesText = hasCoordinates ? `${propertyLatitude}, ${propertyLongitude}` : 'Не указаны';

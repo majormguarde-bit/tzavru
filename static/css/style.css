@@ -16,6 +16,39 @@ body {
     padding-top: 70px;
 }
 
+/* ==================== FORMS ==================== */
+.form-control,
+.form-select {
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: var(--text-light);
+}
+
+.form-control::placeholder {
+    color: rgba(184, 212, 207, 0.78);
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: var(--secondary-color);
+    color: var(--text-light);
+    box-shadow: 0 0 0 0.25rem rgba(45, 255, 153, 0.16);
+}
+
+.form-select option,
+.form-select optgroup {
+    background-color: var(--primary-color);
+    color: var(--text-light);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+    background-color: rgba(255, 255, 255, 0.04);
+    color: rgba(184, 212, 207, 0.75);
+    opacity: 1;
+}
+
 /* ==================== NAVBAR ==================== */
 #mainNav {
     background: rgba(25, 51, 40, 0.95);

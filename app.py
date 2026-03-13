@@ -1873,7 +1873,8 @@ def booking(property_id):
                     amenity_resource_id = int(amenity_resource_id_raw)
                     amenity_date_str = request.form.get('amenity_date', '').strip()
                     amenity_time_str = request.form.get('amenity_time', '').strip()
-                    amenity_duration_minutes = int(request.form.get('amenity_duration_minutes', '0'))
+                    amenity_duration_hours_raw = (request.form.get('amenity_duration_hours') or '').strip().replace(',', '.')
+                    amenity_duration_minutes = int(round(float(amenity_duration_hours_raw) * 60))
                     amenity_notes = (request.form.get('amenity_notes') or '').strip()
                 except Exception:
                     msg = 'Некорректные данные дополнительной услуги.'
@@ -2335,7 +2336,8 @@ def request_amenity(booking_token):
         resource_id = int(request.form['resource_id'])
         date_str = request.form['date']
         time_str = request.form['time']
-        duration_minutes = int(request.form['duration_minutes'])
+        duration_hours_raw = (request.form.get('duration_hours') or '').strip().replace(',', '.')
+        duration_minutes = int(round(float(duration_hours_raw) * 60))
         notes = request.form.get('notes', '').strip()
     except Exception:
         flash('Некорректные данные формы.', 'error')
