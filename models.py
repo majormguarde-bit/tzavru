@@ -1,6 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
-from datetime import datetime
+from datetime import datetime, time
 
 db = SQLAlchemy()
 
@@ -179,6 +179,47 @@ class BookingOption(db.Model):
 
     booking = db.relationship('Booking', backref=db.backref('selected_options', lazy=True, cascade="all, delete-orphan"))
     option_type = db.relationship('OptionType')
+
+class AmenityResource(db.Model):
+    __tablename__ = 'amenity_resource'
+    id = db.Column(db.Integer, primary_key=True)
+    property_id = db.Column(db.Integer, db.ForeignKey('property.id'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    resource_type = db.Column(db.String(50), nullable=False)
+    resource_type_id = db.Column(db.Integer, db.ForeignKey('amenity_resource_type.id'), index=True)
+    is_active = db.Column(db.Boolean, default=True)
+    slot_minutes = db.Column(db.Integer, nullable=False, default=30)
+    buffer_before_minutes = db.Column(db.Integer, nullable=False, default=0)
+    buffer_after_minutes = db.Column(db.Integer, nullable=False, default=0)
+    open_time = db.Column(db.Time, nullable=False, default=time(8, 0))
+    close_time = db.Column(db.Time, nullable=False, default=time(23, 0))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    property = db.relationship('Property', backref=db.backref('amenity_resources', lazy=True, cascade="all, delete-orphan"))
+    resource_type_obj = db.relationship('AmenityResourceType', backref=db.backref('resources', lazy=True))
+
+class AmenityReservation(db.Model):
+    __tablename__ = 'amenity_reservation'
+    id = db.Column(db.Integer, primary_key=True)
+    resource_id = db.Column(db.Integer, db.ForeignKey('amenity_resource.id'), nullable=False, index=True)
+    booking_id = db.Column(db.Integer, db.ForeignKey('booking.id'), nullable=False, index=True)
+    start_dt = db.Column(db.DateTime, nullable=False, index=True)
+    end_dt = db.Column(db.DateTime, nullable=False, index=True)
+    status = db.Column(db.String(20), nullable=False, default='requested')
+    price_total = db.Column(db.Float, nullable=False, default=0.0)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    resource = db.relationship('AmenityResource', backref=db.backref('reservations', lazy=True, cascade="all, delete-orphan"))
+    booking = db.relationship('Booking', backref=db.backref('amenity_reservations', lazy=True, cascade="all, delete-orphan"))
+
+class AmenityResourceType(db.Model):
+    __tablename__ = 'amenity_resource_type'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False, unique=True)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class GuestJournal(db.Model):
     id = db.Column(db.Integer, primary_key=True)
