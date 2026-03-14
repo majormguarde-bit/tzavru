@@ -2734,11 +2734,28 @@ def get_dashboard_stats(start_date, end_date, user=None):
     )
     if user and not user.is_superadmin:
         revenue_query = revenue_query.filter(access_filter)
-    
-    # Выручка от подтвержденных бронирований (статусы confirmed и completed)
-    confirmed_revenue = revenue_query.filter(
-        Booking.status.in_(['confirmed', 'completed'])
-    ).scalar() or 0
+
+    paid_revenue = 0
+    try:
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date, datetime.max.time())
+
+        paid_booking_ids_q = db.session.query(GuestJournal.booking_id).filter(
+            GuestJournal.action_type == 'booking_confirmed',
+            GuestJournal.booking_id.isnot(None),
+            GuestJournal.created_at >= start_dt,
+            GuestJournal.created_at <= end_dt
+        ).distinct()
+
+        paid_revenue_query = db.session.query(db.func.sum(Booking.total_price)).filter(
+            Booking.id.in_(paid_booking_ids_q),
+            Booking.status.in_(['confirmed', 'completed'])
+        )
+        if user and not user.is_superadmin:
+            paid_revenue_query = paid_revenue_query.filter(access_filter)
+        paid_revenue = paid_revenue_query.scalar() or 0
+    except Exception:
+        paid_revenue = 0
     
     # Стоимость заявок (статус pending) - отображается в разделе "Заявки"
     pending_revenue = revenue_query.filter(
@@ -2786,7 +2803,7 @@ def get_dashboard_stats(start_date, end_date, user=None):
         'total_properties': total_properties,
         'total_bookings': total_bookings,
         'pending_bookings': pending_bookings,
-        'confirmed_revenue': confirmed_revenue,
+        'paid_revenue': paid_revenue,
         'pending_revenue': pending_revenue,
         'booking_revenue': booking_revenue,
         'completed_revenue': completed_revenue,

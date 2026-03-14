@@ -34,7 +34,7 @@
                     if (pendingBookingsEl) pendingBookingsEl.textContent = data.stats.pending_bookings;
                     
                     const paidRevenueEl = document.getElementById('stat-paid-revenue');
-                    if (paidRevenueEl) paidRevenueEl.textContent = new Intl.NumberFormat('ru-RU').format(data.stats.confirmed_revenue);
+                    if (paidRevenueEl) paidRevenueEl.textContent = new Intl.NumberFormat('ru-RU').format(data.stats.paid_revenue);
                     
                     const pendingRevenueEl = document.getElementById('stat-pending-revenue');
                     if (pendingRevenueEl) pendingRevenueEl.textContent = new Intl.NumberFormat('ru-RU').format(data.stats.pending_revenue);
@@ -212,8 +212,8 @@
                     </div>
                     <div>
                         <h6 class="text-muted mb-1">Выручка</h6>
-                        <span class="text-success fw-bold fs-5" title="Оплаченные заявки (confirmed + completed)">
-                            <i class="bi bi-cash-coin me-1"></i><span id="stat-paid-revenue">{{ stats.confirmed_revenue|format_price }}</span> ₽
+                        <span class="text-success fw-bold fs-5" title="Оплаты (по событиям подтверждения)">
+                            <i class="bi bi-cash-coin me-1"></i><span id="stat-paid-revenue">{{ stats.paid_revenue|format_price }}</span> ₽
                         </span>
                     </div>
                 </div>

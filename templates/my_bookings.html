@@ -148,7 +148,7 @@
                                                             {% endif %}
                                                         {% endfor %}
                                                         {% set total_calc = base_total + ns.options_total + ns.resources_total %}
-                                                        <div class="fw-bold">{{ total_calc|format_price }} ₽</div>
+                                                        <div class="fw-bold">{{ booking.total_price|format_price }} ₽</div>
                                                         <div class="small text-muted">Проживание {{ base_total|format_price }} ₽ · Опции {{ ns.options_total|format_price }} ₽ · Ресурсы {{ ns.resources_total|format_price }} ₽</div>
                                                     </div>
                                                 </div>
@@ -296,7 +296,7 @@
                                                             {% endif %}
                                                         {% endfor %}
                                                         {% set total_calc = base_total + ns.options_total + ns.resources_total %}
-                                                        <div class="fw-bold">{{ total_calc|format_price }} ₽</div>
+                                                        <div class="fw-bold">{{ booking.total_price|format_price }} ₽</div>
                                                         <div class="small text-muted">Проживание {{ base_total|format_price }} ₽ · Опции {{ ns.options_total|format_price }} ₽ · Ресурсы {{ ns.resources_total|format_price }} ₽</div>
                                                     </div>
                                                 </div>
