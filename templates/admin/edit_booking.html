@@ -489,11 +489,11 @@
 <script>
 (function() {
     var amenityMeta = {
-        {% for res in amenity_resources %}
+        {% for res in (amenity_resources or []) %}
             "{{ res.id }}": {
                 price: {{ (res.price or 0) }},
-                unit: {{ (((res.unit_type.short_name ~ ' ' ~ res.unit_type.name) if res.unit_type else '')|tojson }}
-            },
+                unit: {{ (((res.unit_type.short_name ~ ' ' ~ res.unit_type.name) if res.unit_type else '')|tojson) }}
+            }{{ ',' if not loop.last }}
         {% endfor %}
     };
 
