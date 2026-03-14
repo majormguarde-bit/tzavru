@@ -406,10 +406,17 @@
             style.id = '__print_style';
             style.textContent = `
                 @media print {
-                    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    body { -webkit-print-color-adjust: economy; print-color-adjust: economy; background: #fff !important; color: #000 !important; }
                     body * { visibility: hidden !important; }
                     #__print_root, #__print_root * { visibility: visible !important; }
                     #__print_root { position: absolute; left: 0; top: 0; width: 100%; padding: 16px; }
+                    #__print_root, #__print_root * { background: transparent !important; color: #000 !important; box-shadow: none !important; text-shadow: none !important; }
+                    #__print_root .bg-light { background: transparent !important; }
+                    #__print_root .table { --bs-table-bg: transparent; --bs-table-accent-bg: transparent; }
+                    #__print_root .table-bordered > :not(caption) > * { border-color: #000 !important; }
+                    #__print_root .table-light { background: transparent !important; }
+                    #__print_root .badge { background: transparent !important; color: #000 !important; border: 1px solid #000 !important; }
+                    #__print_root .btn, #__print_root button { display: none !important; }
                     a[href]:after { content: ""; }
                 }
             `;
