@@ -1,13 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}{{ property.name }}{% endblock %}
+{% block title %}{{ property.name }} — {{ site_settings.site_name if site_settings else 'Imperial Collection' }}{% endblock %}
+
+{% block meta_description %}{{ property.short_description if property.short_description else (property.full_description[:200] if property.full_description else 'Прекрасное место для отдыха в Псковской области') }}{% endblock %}
 
 {% block og_title %}{{ property.name }} - {{ site_settings.site_name if site_settings else 'Imperial Collection' }}{% endblock %}
-{% block og_description %}{{ property.description[:200] if property.description else 'Прекрасное место для отдыха в Псковской области' }}{% endblock %}
+{% block og_description %}{{ property.short_description if property.short_description else (property.full_description[:200] if property.full_description else 'Прекрасное место для отдыха в Псковской области') }}{% endblock %}
 {% block og_type %}website{% endblock %}
 
 {% block twitter_title %}{{ property.name }} - {{ site_settings.site_name if site_settings else 'Imperial Collection' }}{% endblock %}
-{% block twitter_description %}{{ property.description[:200] if property.description else 'Прекрасное место для отдыха в Псковской области' }}{% endblock %}
+{% block twitter_description %}{{ property.short_description if property.short_description else (property.full_description[:200] if property.full_description else 'Прекрасное место для отдыха в Псковской области') }}{% endblock %}
 
 {% block structured_data %}
 <script type="application/ld+json">
@@ -15,7 +17,7 @@
   "@context": "https://schema.org",
   "@type": "Hotel",
   "name": "{{ property.name }}",
-  "description": "{{ property.description|replace('"', '\\"') if property.description else 'Прекрасное место для отдыха в Псковской области' }}",
+  "description": "{{ (property.short_description if property.short_description else property.full_description)|replace('\"', '\\\"') if (property.short_description or property.full_description) else 'Прекрасное место для отдыха в Псковской области' }}",
   "url": "{{ request.url_root.rstrip('/') }}/property/{{ property.id }}",
   "image": "{{ property.image_url }}",
   "address": {
@@ -26,14 +28,14 @@
   },
   "geo": {
     "@type": "GeoCoordinates",
-    "latitude": {{ property.latitude }},
-    "longitude": {{ property.longitude }}
+    "latitude": {{ property.latitude if property.latitude is not none else 'null' }},
+    "longitude": {{ property.longitude if property.longitude is not none else 'null' }}
   },
   "priceRange": "{{ property.price_per_night|format_price }} ₽",
   "numberOfRooms": {{ property.capacity }},
   "checkinTime": "14:00",
   "checkoutTime": "12:00",
-  "telephone": "{{ site_settings.phone if site_settings and site_settings.phone else '+7-999-123-45-67' }}",
+  "telephone": "{{ site_settings.phone_main if site_settings and site_settings.phone_main else '+7-999-123-45-67' }}",
   "starRating": {
     "@type": "Rating",
     "ratingValue": "4.5"

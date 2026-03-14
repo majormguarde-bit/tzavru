@@ -2523,9 +2523,6 @@ def sitemap():
     # Add main pages
     pages = [
         {'url': '/', 'priority': '1.0', 'changefreq': 'daily'},
-        {'url': '/login', 'priority': '0.8', 'changefreq': 'monthly'},
-        {'url': '/register', 'priority': '0.8', 'changefreq': 'monthly'},
-        {'url': '/my-bookings', 'priority': '0.9', 'changefreq': 'weekly'},
     ]
     
     for page in pages:
@@ -2536,7 +2533,7 @@ def sitemap():
         sitemap_xml.append(f'  </url>')
     
     # Add property pages
-    properties = Property.query.filter_by(is_active=True).all()
+    properties = Property.query.filter_by(is_available=True).all()
     for property in properties:
         sitemap_xml.append(f'  <url>')
         sitemap_xml.append(f'    <loc>{base_url}/property/{property.id}</loc>')
@@ -2905,6 +2902,125 @@ def admin_api_dashboard_stats():
         
     return jsonify({
         'stats': stats,
+        'bookings': bookings_json
+    })
+
+@app.route('/admin/api/daily-plan')
+@admin_required
+def admin_api_daily_plan():
+    date_str = (request.args.get('date') or '').strip()
+    if not date_str:
+        return jsonify({'error': 'Missing date'}), 400
+
+    try:
+        day = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Invalid date format'}), 400
+
+    user = get_current_admin()
+
+    properties_query = Property.query
+    if user and not user.is_superadmin:
+        accessible_ids = db.session.query(AdminPropertyAccess.property_id).filter(AdminPropertyAccess.user_id == user.id).all()
+        accessible_ids = [pid[0] for pid in accessible_ids]
+        properties_query = properties_query.filter(
+            or_(
+                Property.id.in_(accessible_ids),
+                Property.owner_id == user.id
+            )
+        )
+
+    properties = properties_query.order_by(Property.name.asc()).all()
+    property_ids = [p.id for p in properties]
+
+    bookings = []
+    if property_ids:
+        bookings = Booking.query.filter(
+            Booking.property_id.in_(property_ids),
+            Booking.status.in_(['pending', 'confirmed', 'completed']),
+            Booking.check_in <= day,
+            Booking.check_out > day
+        ).order_by(Booking.property_id.asc(), Booking.check_in.asc(), Booking.id.asc()).all()
+
+    booking_ids = [b.id for b in bookings]
+
+    reservations_by_booking = {}
+    if booking_ids:
+        day_start = datetime.combine(day, datetime.min.time())
+        next_day_start = datetime.combine(day + timedelta(days=1), datetime.min.time())
+        reservations = AmenityReservation.query.join(
+            AmenityResource, AmenityReservation.resource_id == AmenityResource.id
+        ).filter(
+            AmenityReservation.booking_id.in_(booking_ids),
+            AmenityReservation.status != 'cancelled',
+            AmenityReservation.start_dt >= day_start,
+            AmenityReservation.start_dt < next_day_start
+        ).order_by(AmenityReservation.start_dt.asc(), AmenityReservation.id.asc()).all()
+        for r in reservations:
+            reservations_by_booking.setdefault(r.booking_id, []).append(r)
+
+    bookings_json = []
+    for b in bookings:
+        options = []
+        options_total = 0.0
+        for item in getattr(b, 'selected_options', []) or []:
+            line_total = (float(item.price or 0) * float(item.quantity or 0))
+            options_total += line_total
+            options.append({
+                'name': item.option_name,
+                'qty': item.quantity,
+                'price': float(item.price or 0),
+                'line_total': line_total
+            })
+
+        resources = []
+        resources_total = 0.0
+        for r in reservations_by_booking.get(b.id, []):
+            pt = float(r.price_total or 0)
+            resources_total += pt
+            resources.append({
+                'id': r.id,
+                'resource_name': (r.resource.name if r.resource else ''),
+                'start': r.start_dt.strftime('%H:%M'),
+                'end': r.end_dt.strftime('%H:%M') if r.end_dt else '',
+                'status': r.status,
+                'price_total': pt,
+                'notes': r.notes or ''
+            })
+
+        stay_total = float(b.total_price or 0) - options_total
+        total_with_resources = float(b.total_price or 0) + resources_total
+
+        bookings_json.append({
+            'id': b.id,
+            'property_id': b.property_id,
+            'property_name': (b.property.name if b.property else ''),
+            'guest_name': b.guest_name,
+            'guest_phone': b.guest_phone,
+            'guest_email': b.guest_email,
+            'status': b.status,
+            'check_in': b.check_in.strftime('%d.%m.%Y'),
+            'check_out': b.check_out.strftime('%d.%m.%Y'),
+            'guests_count': b.guests_count,
+            'stay_total': stay_total,
+            'options_total': options_total,
+            'resources_total': resources_total,
+            'total_price': float(b.total_price or 0),
+            'total_with_resources': total_with_resources,
+            'options': options,
+            'resources': resources,
+            'edit_url': url_for('admin_booking_edit', booking_id=b.id)
+        })
+
+    properties_json = [{
+        'id': p.id,
+        'name': p.name,
+        'location': getattr(p, 'location', '') or ''
+    } for p in properties]
+
+    return jsonify({
+        'date': day.isoformat(),
+        'properties': properties_json,
         'bookings': bookings_json
     })
 

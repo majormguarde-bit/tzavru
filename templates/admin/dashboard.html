@@ -20,6 +20,284 @@
         var calendarEl = document.getElementById('calendar');
         var isInitialized = false;
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function formatIsoDateRu(iso) {
+            if (!iso) return '';
+            var parts = String(iso).split('-');
+            if (parts.length !== 3) return String(iso);
+            return `${parts[2]}.${parts[1]}.${parts[0]}`;
+        }
+
+        function formatMoney(value) {
+            return `${new Intl.NumberFormat('ru-RU').format(Number(value || 0))} ₽`;
+        }
+
+        function statusMeta(status) {
+            var map = {
+                pending: { text: 'Заявка', cls: 'bg-warning text-dark' },
+                confirmed: { text: 'Бронирование', cls: 'bg-success text-white' },
+                completed: { text: 'Завершено', cls: 'bg-secondary text-white' },
+                cancelled: { text: 'Отменено', cls: 'bg-danger text-white' },
+                requested: { text: 'Запрошено', cls: 'bg-warning text-dark' },
+                approved: { text: 'Подтверждено', cls: 'bg-success text-white' }
+            };
+            return map[status] || { text: status || '', cls: 'bg-secondary text-white' };
+        }
+
+        function buildDailyPlanHtml(data) {
+            var properties = Array.isArray(data.properties) ? data.properties : [];
+            var bookings = Array.isArray(data.bookings) ? data.bookings : [];
+
+            var totals = {
+                bookings: bookings.length,
+                stay: 0,
+                options: 0,
+                resources: 0,
+                total: 0
+            };
+            var statusCounts = { pending: 0, confirmed: 0, completed: 0, cancelled: 0 };
+
+            bookings.forEach(function(b) {
+                totals.stay += Number(b.stay_total || 0);
+                totals.options += Number(b.options_total || 0);
+                totals.resources += Number(b.resources_total || 0);
+                totals.total += Number(b.total_with_resources || 0);
+                if (b.status && statusCounts[b.status] !== undefined) statusCounts[b.status] += 1;
+            });
+
+            var bookingsByProperty = {};
+            bookings.forEach(function(b) {
+                var pid = String(b.property_id || '');
+                if (!bookingsByProperty[pid]) bookingsByProperty[pid] = [];
+                bookingsByProperty[pid].push(b);
+            });
+
+            var html = '';
+            html += `
+                <div class="mb-3">
+                    <div class="row g-2">
+                        <div class="col-12 col-md-3">
+                            <div class="p-2 bg-light rounded">
+                                <div class="text-muted small">Бронирований</div>
+                                <div class="fw-bold">${totals.bookings}</div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <div class="p-2 bg-light rounded">
+                                <div class="text-muted small">Проживание</div>
+                                <div class="fw-bold">${formatMoney(totals.stay)}</div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <div class="p-2 bg-light rounded">
+                                <div class="text-muted small">Опции</div>
+                                <div class="fw-bold">${formatMoney(totals.options)}</div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-3">
+                            <div class="p-2 bg-light rounded">
+                                <div class="text-muted small">Ресурсы</div>
+                                <div class="fw-bold">${formatMoney(totals.resources)}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-muted small">
+                        <span class="me-3">Заявки: <strong>${statusCounts.pending || 0}</strong></span>
+                        <span class="me-3">Бронирование: <strong>${statusCounts.confirmed || 0}</strong></span>
+                        <span class="me-3">Завершено: <strong>${statusCounts.completed || 0}</strong></span>
+                        <span>Отменено: <strong>${statusCounts.cancelled || 0}</strong></span>
+                    </div>
+                </div>
+            `;
+
+            properties.forEach(function(p) {
+                var pid = String(p.id || '');
+                var pBookings = bookingsByProperty[pid] || [];
+                pBookings.sort(function(a, b) {
+                    return (String(a.status || '')).localeCompare(String(b.status || '')) || (Number(a.id || 0) - Number(b.id || 0));
+                });
+
+                html += `
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-baseline">
+                            <div>
+                                <div class="fw-bold">${escapeHtml(p.name || '')}</div>
+                                ${p.location ? `<div class="text-muted small">${escapeHtml(p.location)}</div>` : ''}
+                            </div>
+                            <div class="text-muted small">${pBookings.length} шт.</div>
+                        </div>
+                `;
+
+                if (pBookings.length === 0) {
+                    html += `<div class="text-muted small mt-2">Нет бронирований</div></div>`;
+                    return;
+                }
+
+                html += `
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm table-bordered align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 80px;">ID</th>
+                                        <th>Гость</th>
+                                        <th style="width: 70px;">Гости</th>
+                                        <th style="width: 130px;">Статус</th>
+                                        <th style="width: 140px;" class="text-end">Проживание</th>
+                                        <th style="width: 120px;" class="text-end">Опции</th>
+                                        <th style="width: 120px;" class="text-end">Ресурсы</th>
+                                        <th style="width: 160px;" class="text-end">Итого</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                `;
+
+                pBookings.forEach(function(b) {
+                    var st = statusMeta(b.status);
+                    var guestLine = escapeHtml(b.guest_name || '');
+                    if (b.guest_phone) guestLine += `<div class="text-muted small">${escapeHtml(b.guest_phone)}</div>`;
+                    var options = Array.isArray(b.options) ? b.options : [];
+                    var resources = Array.isArray(b.resources) ? b.resources : [];
+
+                    html += `
+                        <tr>
+                            <td>
+                                ${b.edit_url ? `<a href="${escapeHtml(b.edit_url)}" class="text-decoration-none">#${escapeHtml(b.id)}</a>` : `#${escapeHtml(b.id)}`}
+                            </td>
+                            <td>${guestLine}</td>
+                            <td>${escapeHtml(b.guests_count || '')}</td>
+                            <td><span class="badge ${st.cls}">${escapeHtml(st.text)}</span></td>
+                            <td class="text-end">${formatMoney(b.stay_total)}</td>
+                            <td class="text-end">${formatMoney(b.options_total)}</td>
+                            <td class="text-end">${formatMoney(b.resources_total)}</td>
+                            <td class="text-end fw-bold">${formatMoney(b.total_with_resources)}</td>
+                        </tr>
+                    `;
+
+                    var details = '';
+                    if (options.length > 0) {
+                        var optLines = options.map(function(o) {
+                            var qty = Number(o.qty || 0);
+                            return `${escapeHtml(o.name || '')} × ${qty} (${formatMoney(o.line_total || 0)})`;
+                        }).join('<br>');
+                        details += `<div class="mb-2"><div class="fw-bold small">Опции</div><div class="small">${optLines}</div></div>`;
+                    }
+                    if (resources.length > 0) {
+                        var resLines = resources.map(function(r) {
+                            var timeRange = '';
+                            if (r.start) timeRange += escapeHtml(r.start);
+                            if (r.end) timeRange += `–${escapeHtml(r.end)}`;
+                            var rn = escapeHtml(r.resource_name || '');
+                            var rs = statusMeta(r.status);
+                            var price = formatMoney(r.price_total || 0);
+                            var note = r.notes ? ` — ${escapeHtml(r.notes)}` : '';
+                            return `${timeRange} ${rn} <span class="badge ${rs.cls}">${escapeHtml(rs.text)}</span> ${price}${note}`;
+                        }).join('<br>');
+                        details += `<div><div class="fw-bold small">Ресурсы</div><div class="small">${resLines}</div></div>`;
+                    }
+                    if (details) {
+                        html += `<tr><td colspan="8" class="bg-light">${details}</td></tr>`;
+                    }
+                });
+
+                html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (properties.length === 0) {
+                html = `<div class="text-muted">Нет доступных объектов</div>`;
+            }
+
+            return html;
+        }
+
+        function openDailyPlan(dateStr) {
+            var modalEl = document.getElementById('dailyPlanModal');
+            var modalLabelEl = document.getElementById('dailyPlanModalLabel');
+            var bodyEl = document.getElementById('dailyPlanModalBody');
+            if (!modalEl || !modalLabelEl || !bodyEl) return;
+
+            var dateRu = formatIsoDateRu(dateStr);
+            modalLabelEl.textContent = `План загрузки на ${dateRu}`;
+            bodyEl.innerHTML = `
+                <div class="d-flex align-items-center gap-2 text-muted">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <div>Загрузка...</div>
+                </div>
+            `;
+
+            fetch(`/admin/api/daily-plan?date=${encodeURIComponent(dateStr)}`)
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    if (data && data.error) {
+                        bodyEl.innerHTML = `<div class="alert alert-danger mb-0">${escapeHtml(data.error)}</div>`;
+                        return;
+                    }
+                    bodyEl.innerHTML = `<div id="dailyPlanPrintArea">${buildDailyPlanHtml(data || {})}</div>`;
+                })
+                .catch(function(err) {
+                    bodyEl.innerHTML = `<div class="alert alert-danger mb-0">Ошибка загрузки плана</div>`;
+                });
+
+            new bootstrap.Modal(modalEl).show();
+        }
+
+        function printDailyPlan() {
+            var title = document.getElementById('dailyPlanModalLabel') ? document.getElementById('dailyPlanModalLabel').textContent : '';
+            var areaEl = document.getElementById('dailyPlanPrintArea');
+            if (!areaEl) return;
+
+            var w = window.open('', '_blank', 'noopener,noreferrer');
+            if (!w) return;
+
+            var html = `
+                <html>
+                    <head>
+                        <meta charset="utf-8" />
+                        <meta name="viewport" content="width=device-width, initial-scale=1" />
+                        <title>${escapeHtml(title)}</title>
+                        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+                        <style>
+                            @media print {
+                                a[href]:after { content: ""; }
+                            }
+                        </style>
+                    </head>
+                    <body class="p-3">
+                        <h4 class="mb-3">${escapeHtml(title)}</h4>
+                        ${areaEl.innerHTML}
+                    </body>
+                </html>
+            `;
+
+            w.document.open();
+            w.document.write(html);
+            w.document.close();
+            w.focus();
+            setTimeout(function() {
+                w.print();
+                w.close();
+            }, 250);
+        }
+
+        var printBtn = document.getElementById('dailyPlanPrintBtn');
+        if (printBtn) {
+            printBtn.addEventListener('click', function() {
+                printDailyPlan();
+            });
+        }
+
         function updateDashboard(startStr, endStr) {
             fetch(`/admin/api/dashboard-stats?start=${startStr}&end=${endStr}`)
                 .then(response => response.json())
@@ -115,6 +393,9 @@
                 list: 'Список'
             },
             events: {{ calendar_events | tojson }},
+            dateClick: function(info) {
+                if (info && info.dateStr) openDailyPlan(info.dateStr);
+            },
             eventClick: function(info) {
                 if (info.event.url) {
                     window.open(info.event.url, "_self");
@@ -292,6 +573,24 @@
     </div>
     <div class="card-body">
         <div id='calendar'></div>
+    </div>
+</div>
+
+<div class="modal fade" id="dailyPlanModal" tabindex="-1" aria-labelledby="dailyPlanModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="dailyPlanModalLabel">План загрузки</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body" id="dailyPlanModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary" id="dailyPlanPrintBtn">
+                    <i class="bi bi-printer me-1"></i>Печать
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
     </div>
 </div>
 
