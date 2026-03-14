@@ -4294,7 +4294,8 @@ def admin_amenity_resource_add():
         if close_time_val <= open_time_val:
             flash('Часы работы ресурса заданы некорректно: "до" должно быть позже "с".', 'error')
             return redirect(url_for('admin_amenity_resources'))
-        work_minutes = int((datetime.combine(date.today(), close_time_val) - datetime.combine(date.today(), open_time_val)).total_seconds() / 60)
+        base_day = datetime.utcnow().date()
+        work_minutes = int((datetime.combine(base_day, close_time_val) - datetime.combine(base_day, open_time_val)).total_seconds() / 60)
         if work_minutes < slot_minutes:
             flash('Слот больше доступного времени в часах работы ресурса.', 'error')
             return redirect(url_for('admin_amenity_resources'))
@@ -4350,7 +4351,8 @@ def admin_amenity_resource_edit(resource_id):
         if close_time_val <= open_time_val:
             flash('Часы работы ресурса заданы некорректно: "до" должно быть позже "с".', 'error')
             return redirect(url_for('admin_amenity_resources'))
-        work_minutes = int((datetime.combine(date.today(), close_time_val) - datetime.combine(date.today(), open_time_val)).total_seconds() / 60)
+        base_day = datetime.utcnow().date()
+        work_minutes = int((datetime.combine(base_day, close_time_val) - datetime.combine(base_day, open_time_val)).total_seconds() / 60)
         if work_minutes < slot_minutes:
             flash('Слот больше доступного времени в часах работы ресурса.', 'error')
             return redirect(url_for('admin_amenity_resources'))
