@@ -220,17 +220,17 @@
                                 {% for r in amenity_reservations %}
                                 <tr class="{{ 'table-secondary' if r.status == 'cancelled' else '' }}">
                                     <td>
-                                        <select name="resource_id" form="amenityUpdate{{ r.id }}" class="form-select form-select-sm" style="max-width: 280px;">
+                                        <select class="form-select form-select-sm" style="max-width: 280px;" data-field="resource_id">
                                             {% for res in amenity_resources %}
                                                 <option value="{{ res.id }}" {% if r.resource_id == res.id %}selected{% endif %}>{{ res.name }}</option>
                                             {% endfor %}
                                         </select>
                                     </td>
                                     <td>
-                                        <input type="date" name="date" form="amenityUpdate{{ r.id }}" class="form-control form-control-sm" min="{{ booking_date_bounds.min }}" max="{{ booking_date_bounds.max }}" value="{{ r.start_dt.strftime('%Y-%m-%d') }}">
+                                        <input type="date" class="form-control form-control-sm" min="{{ booking_date_bounds.min }}" max="{{ booking_date_bounds.max }}" value="{{ r.start_dt.strftime('%Y-%m-%d') }}" data-field="date">
                                     </td>
                                     <td>
-                                        <select name="time" form="amenityUpdate{{ r.id }}" class="form-select form-select-sm">
+                                        <select class="form-select form-select-sm" data-field="time">
                                             {% set tsel = r.start_dt.strftime('%H:%M') %}
                                             {% for t in time_options %}
                                                 <option value="{{ t }}" {% if t == tsel %}selected{% endif %}>{{ t }}</option>
@@ -238,10 +238,10 @@
                                         </select>
                                     </td>
                                     <td>
-                                        <input type="number" step="0.5" min="0.5" name="duration_hours" form="amenityUpdate{{ r.id }}" class="form-control form-control-sm" value="{{ ((r.end_dt - r.start_dt).total_seconds() / 3600)|round(2) }}">
+                                        <input type="number" step="0.5" min="0.5" class="form-control form-control-sm" value="{{ ((r.end_dt - r.start_dt).total_seconds() / 3600)|round(2) }}" data-field="duration_hours">
                                     </td>
                                     <td>
-                                        <select name="status" form="amenityUpdate{{ r.id }}" class="form-select form-select-sm">
+                                        <select class="form-select form-select-sm" data-field="status">
                                             <option value="requested" {% if r.status == 'requested' %}selected{% endif %}>Запрос</option>
                                             <option value="approved" {% if r.status == 'approved' %}selected{% endif %}>Подтв.</option>
                                             <option value="completed" {% if r.status == 'completed' %}selected{% endif %}>Выполн.</option>
@@ -249,14 +249,21 @@
                                         </select>
                                     </td>
                                     <td>
-                                        <input type="number" step="0.01" name="price_total" form="amenityUpdate{{ r.id }}" class="form-control form-control-sm" value="{{ r.price_total }}">
+                                        <input type="number" step="0.01" class="form-control form-control-sm" value="{{ r.price_total }}" data-field="price_total">
                                     </td>
                                     <td>
-                                        <input type="text" name="notes" form="amenityUpdate{{ r.id }}" class="form-control form-control-sm" value="{{ r.notes or '' }}">
+                                        <input type="text" class="form-control form-control-sm" value="{{ r.notes or '' }}" data-field="notes">
                                     </td>
                                     <td class="text-end">
                                         <div class="d-flex gap-2 justify-content-end">
                                             <form id="amenityUpdate{{ r.id }}" method="POST" action="{{ url_for('admin_booking_amenity_update', booking_id=booking.id, reservation_id=r.id) }}">
+                                                <input type="hidden" name="resource_id">
+                                                <input type="hidden" name="date">
+                                                <input type="hidden" name="time">
+                                                <input type="hidden" name="duration_hours">
+                                                <input type="hidden" name="status">
+                                                <input type="hidden" name="price_total">
+                                                <input type="hidden" name="notes">
                                                 <button type="submit" class="btn btn-sm btn-outline-primary">
                                                     <i class="bi bi-save"></i>
                                                 </button>
@@ -593,6 +600,21 @@
     if (dateInput && !dateInput.value) {
         dateInput.value = dateInput.min || '';
     }
+
+    document.addEventListener('submit', function(e) {
+        var form = e.target;
+        if (!form || !form.id || form.id.indexOf('amenityUpdate') !== 0) return;
+        var tr = form.closest('tr');
+        if (!tr) return;
+        var els = tr.querySelectorAll('[data-field]');
+        els.forEach(function(el) {
+            var field = el.getAttribute('data-field');
+            if (!field) return;
+            var hidden = form.querySelector('[name="' + field + '"]');
+            if (!hidden) return;
+            hidden.value = el.value;
+        });
+    }, true);
 })();
 </script>
 {% endblock %}
