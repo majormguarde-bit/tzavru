@@ -78,6 +78,8 @@
                         propertyLocation: {{ single_booking.property.location|tojson }},
                         checkIn: "{{ single_booking.check_in.strftime('%d.%m.%Y') }}",
                         checkOut: "{{ single_booking.check_out.strftime('%d.%m.%Y') }}",
+                        nights: {{ (single_booking.check_out - single_booking.check_in).days }},
+                        pricePerNight: {{ (single_booking.property.price_per_night or 0) }},
                         guestName: {{ single_booking.guest_name|tojson }},
                         guestPhone: {{ single_booking.guest_phone|tojson }},
                         guestEmail: {{ single_booking.guest_email|tojson }},
@@ -138,6 +140,17 @@
                             var optionsTotal = Number(data.optionsTotal || 0);
                             var resourcesTotal = Number(data.resourcesTotal || 0);
                             var totalPrice = Number(data.totalPrice || 0);
+                            var nights = Number(data.nights || 0);
+                            var guestsCount = Number(data.guestsCount || 0);
+                            var pricePerNight = Number(data.pricePerNight || 0);
+                            var calcStay = (nights > 0 && guestsCount > 0 && pricePerNight > 0) ? (nights * guestsCount * pricePerNight) : null;
+                            var stayDetailsParts = [];
+                            if (data.checkIn && data.checkOut) stayDetailsParts.push(`${data.checkIn} – ${data.checkOut}`);
+                            if (nights > 0) stayDetailsParts.push(`ночей: ${nights}`);
+                            if (guestsCount > 0) stayDetailsParts.push(`гостей: ${guestsCount}`);
+                            if (pricePerNight > 0) stayDetailsParts.push(`тариф: ${pricePerNight.toLocaleString('ru-RU')} ₽/ночь`);
+                            if (calcStay !== null) stayDetailsParts.push(`по тарифу: ${calcStay.toLocaleString('ru-RU')} ₽`);
+                            var stayDetails = stayDetailsParts.join(' · ');
                             var optionsRows = data.options.length
                                 ? data.options.map(function(item) { return `<tr><td>${item.name}</td><td>${item.qty}</td><td>${Number(item.pricePerUnit).toLocaleString('ru-RU')} ₽</td><td>${Number(item.lineTotal).toLocaleString('ru-RU')} ₽</td></tr>`; }).join('')
                                 : '<tr><td colspan="4" style="text-align:center;color:#666;">Опции не выбраны</td></tr>';
@@ -169,6 +182,7 @@
                                         .summary-row:last-child { border-bottom: 0; }
                                         .summary-row .value { white-space: nowrap; }
                                         .summary-row.stay { font-size: 16px; }
+                                        .muted { color: #666; font-size: 12px; font-weight: 400; margin-top: 2px; }
                                     </style>
                                 </head>
                                 <body>
@@ -184,7 +198,10 @@
 
                                     <div class="summary">
                                         <div class="summary-row stay">
-                                            <div class="label">Проживание</div>
+                                            <div>
+                                                <div class="label">Проживание</div>
+                                                ${stayDetails ? `<div class="muted">${stayDetails}</div>` : ``}
+                                            </div>
                                             <div class="value"><strong>${stayTotal.toLocaleString('ru-RU')} ₽</strong></div>
                                         </div>
                                         <div class="summary-row">
