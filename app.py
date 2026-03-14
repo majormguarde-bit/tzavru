@@ -27,6 +27,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from sqlalchemy import inspect, or_
+from sqlalchemy.orm import selectinload
 import requests
 import io
 import random
@@ -721,7 +722,10 @@ def admin_can_edit_reference_data(user):
 
 @app.route('/')
 def index():
-    properties = Property.query.order_by(Property.created_at.desc()).all()
+    properties = Property.query.options(
+        selectinload(Property.amenity_resources).selectinload(AmenityResource.unit_type),
+        selectinload(Property.amenity_resources).selectinload(AmenityResource.resource_type_obj)
+    ).order_by(Property.created_at.desc()).all()
     
     # Получаем опубликованные отзывы
     reviews = Review.query.filter_by(is_published=True).order_by(Review.created_at.desc()).limit(6).all()

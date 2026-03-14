@@ -257,6 +257,23 @@
                                 <span class="feature-tag">{{ property_option.option_type.name }}</span>
                             {% endfor %}
                         </div>
+
+                        {% set active_resources = property.amenity_resources|selectattr('is_active')|list %}
+                        {% if active_resources %}
+                        <div class="text-muted small mb-2">
+                            <i class="bi bi-calendar2-week me-1"></i> Ресурсы
+                        </div>
+                        <div class="property-features mb-3">
+                            {% for res in active_resources[:3] %}
+                                <span class="feature-tag">
+                                    {{ res.name }}{% if res.price and res.price > 0 %} · {{ res.price|format_price }} ₽{% if res.unit_type %}/{{ res.unit_type.short_name }}{% endif %}{% endif %}
+                                </span>
+                            {% endfor %}
+                            {% if active_resources|length > 3 %}
+                                <span class="feature-tag">+{{ active_resources|length - 3 }}</span>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                         
                         <div class="property-meta">
                             <div class="meta-item">
