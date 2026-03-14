@@ -33,11 +33,14 @@
                     const pendingBookingsEl = document.getElementById('stat-pending-bookings');
                     if (pendingBookingsEl) pendingBookingsEl.textContent = data.stats.pending_bookings;
                     
-                    const confirmedRevenueEl = document.getElementById('stat-confirmed-revenue');
-                    if (confirmedRevenueEl) confirmedRevenueEl.textContent = new Intl.NumberFormat('ru-RU').format(data.stats.confirmed_revenue);
+                    const paidRevenueEl = document.getElementById('stat-paid-revenue');
+                    if (paidRevenueEl) paidRevenueEl.textContent = new Intl.NumberFormat('ru-RU').format(data.stats.confirmed_revenue);
                     
                     const pendingRevenueEl = document.getElementById('stat-pending-revenue');
                     if (pendingRevenueEl) pendingRevenueEl.textContent = new Intl.NumberFormat('ru-RU').format(data.stats.pending_revenue);
+
+                    const bookingRevenueEl = document.getElementById('stat-booking-revenue');
+                    if (bookingRevenueEl) bookingRevenueEl.textContent = new Intl.NumberFormat('ru-RU').format(data.stats.booking_revenue);
                     
                     // Update Registration/Visitor Stats
                     const dailyRegistrationsEl = document.getElementById('stat-daily-registrations');
@@ -178,7 +181,7 @@
                     <div>
                         <h6 class="text-muted mb-1">Заявки</h6>
                         <h3 class="mb-0 fw-bold" id="stat-pending-bookings">{{ stats.pending_bookings }}</h3>
-                        <small class="text-warning fw-bold">{{ stats.pending_revenue|format_price }} ₽</small>
+                        <small class="text-warning fw-bold"><span id="stat-pending-revenue">{{ stats.pending_revenue|format_price }}</span> ₽</small>
                     </div>
                 </div>
             </div>
@@ -194,7 +197,7 @@
                     <div>
                         <h6 class="text-muted mb-1">Бронирование</h6>
                         <h3 class="mb-0 fw-bold" id="stat-confirmed-bookings">{{ stats.total_bookings - stats.pending_bookings }}</h3>
-                        <small class="text-success fw-bold">{{ stats.booking_revenue|format_price }} ₽</small>
+                        <small class="text-success fw-bold"><span id="stat-booking-revenue">{{ stats.booking_revenue|format_price }}</span> ₽</small>
                     </div>
                 </div>
             </div>
@@ -209,14 +212,9 @@
                     </div>
                     <div>
                         <h6 class="text-muted mb-1">Выручка</h6>
-                        <div class="d-flex flex-column">
-                            <span class="text-success fw-bold fs-5" title="Выполненные бронирования">
-                                <i class="bi bi-check-circle-fill me-1"></i><span id="stat-completed-revenue">{{ stats.completed_revenue|format_price }}</span> ₽
-                            </span>
-                            <span class="text-info fw-bold small" title="Подтвержденные бронирования">
-                                <i class="bi bi-check-lg me-1"></i><span id="stat-booking-revenue">{{ stats.booking_revenue|format_price }}</span> ₽
-                            </span>
-                        </div>
+                        <span class="text-success fw-bold fs-5" title="Оплаченные заявки (confirmed + completed)">
+                            <i class="bi bi-cash-coin me-1"></i><span id="stat-paid-revenue">{{ stats.confirmed_revenue|format_price }}</span> ₽
+                        </span>
                     </div>
                 </div>
             </div>

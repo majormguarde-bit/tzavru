@@ -4,6 +4,67 @@
 
 {% block content %}
 <div class="row g-4">
+    {% if pending_reservations %}
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h5 class="mb-3">Заявки на ресурсы</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 180px;">Дата/время</th>
+                                <th>Ресурс</th>
+                                <th style="width: 220px;">Гость</th>
+                                <th style="width: 120px;">Заявка</th>
+                                <th style="width: 120px;">Сумма</th>
+                                <th style="width: 120px;">Статус</th>
+                                <th class="text-end" style="width: 240px;">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for req in pending_reservations %}
+                            <tr>
+                                <td>
+                                    <div class="fw-bold">{{ req.start_dt.strftime('%d.%m.%Y') }}</div>
+                                    <div class="small text-muted">{{ req.start_dt.strftime('%H:%M') }}–{{ req.end_dt.strftime('%H:%M') }}</div>
+                                </td>
+                                <td>
+                                    <div class="fw-bold">{{ req.resource.name }}</div>
+                                    <div class="small text-muted">{{ req.resource.property.name }}</div>
+                                </td>
+                                <td>
+                                    <div class="fw-bold">{{ req.booking.guest_name }}</div>
+                                    <div class="small text-muted">{{ req.booking.guest_phone }}</div>
+                                </td>
+                                <td><a class="text-decoration-none" href="{{ url_for('admin_booking_edit', booking_id=req.booking_id) }}">#{{ req.booking_id }}</a></td>
+                                <td>{{ req.price_total|format_price }} ₽</td>
+                                <td><span class="badge bg-warning text-dark">Ожидает</span></td>
+                                <td class="text-end">
+                                    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin_amenity_resource_schedule', resource_id=req.resource_id, date=req.start_dt.strftime('%Y-%m-%d')) }}">
+                                        <i class="bi bi-calendar2-week me-1"></i>План
+                                    </a>
+                                    <form method="POST" action="{{ url_for('admin_amenity_reservation_approve', reservation_id=req.id, date=req.start_dt.strftime('%Y-%m-%d')) }}" class="d-inline">
+                                        <button type="submit" class="btn btn-success btn-sm">
+                                            <i class="bi bi-check-lg me-1"></i>Подтв.
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('admin_amenity_reservation_cancel', reservation_id=req.id, date=req.start_dt.strftime('%Y-%m-%d')) }}" class="d-inline">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Отменить заявку на ресурс?');">
+                                            <i class="bi bi-x-lg me-1"></i>Отм.
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="col-12">
         <div class="card border-0 shadow-sm">
             <div class="card-body">
@@ -33,6 +94,19 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Цена, ₽</label>
+                        <input type="number" name="price" class="form-control" min="0" step="0.01" value="0">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Ед. измерения</label>
+                        <select name="unit_type_id" class="form-select">
+                            <option value="">За услугу</option>
+                            {% for u in units %}
+                                <option value="{{ u.id }}">{{ u.name }} ({{ u.short_name }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                     <div class="col-md-2">
                         <label class="form-label">Слот, ч</label>
                         <input type="number" name="slot_hours" class="form-control" min="0.5" step="0.5" value="0.5">
@@ -45,7 +119,7 @@
                         <label class="form-label">Пауза после, мин</label>
                         <input type="number" name="buffer_after_minutes" class="form-control" min="0" step="5" value="0">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label">Открыто</label>
                         <select name="open_time" class="form-select" required>
                             {% for t in time_options %}
@@ -53,7 +127,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label">Закрыто</label>
                         <select name="close_time" class="form-select" required>
                             {% for t in time_options %}
@@ -88,6 +162,7 @@
                                 <th style="width: 220px;">Объект</th>
                                 <th>Ресурс</th>
                                 <th style="width: 160px;">Тип</th>
+                                <th style="width: 160px;">Цена</th>
                                 <th style="width: 120px;">Слот</th>
                                 <th style="width: 160px;">Паузы</th>
                                 <th style="width: 150px;">Часы</th>
@@ -101,6 +176,13 @@
                                 <td>{{ r.property.name }}</td>
                                 <td><strong>{{ r.name }}</strong></td>
                                 <td>{{ r.resource_type_obj.name if r.resource_type_obj else r.resource_type }}</td>
+                                <td>
+                                    {% if r.price and r.price > 0 %}
+                                        {{ r.price|format_price }} ₽{% if r.unit_type %}/{{ r.unit_type.short_name }}{% endif %}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if r.slot_minutes % 60 == 0 %}
                                         {{ r.slot_minutes // 60 }} ч
@@ -155,6 +237,19 @@
                                                                 <option value="{{ t.id }}" {% if is_selected %}selected{% endif %} {% if (not t.is_active) and (not is_selected) %}disabled{% endif %}>
                                                                     {{ t.name }}{% if not t.is_active %} (выключен){% endif %}
                                                                 </option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">Цена, ₽</label>
+                                                        <input type="number" name="price" class="form-control" min="0" step="0.01" value="{{ r.price or 0 }}">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <label class="form-label">Ед. измерения</label>
+                                                        <select name="unit_type_id" class="form-select">
+                                                            <option value="" {% if not r.unit_type_id %}selected{% endif %}>За услугу</option>
+                                                            {% for u in units %}
+                                                                <option value="{{ u.id }}" {% if r.unit_type_id == u.id %}selected{% endif %}>{{ u.name }} ({{ u.short_name }})</option>
                                                             {% endfor %}
                                                         </select>
                                                     </div>

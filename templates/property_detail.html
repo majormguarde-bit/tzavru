@@ -357,6 +357,30 @@
         </div>
         {% endif %}
 
+        {% set active_resources = property.amenity_resources|selectattr('is_active')|list %}
+        {% if active_resources %}
+        <div class="row mt-5">
+            <div class="col-12">
+                <h3 class="mb-4">Ресурсы</h3>
+                <div class="row">
+                    {% for res in active_resources %}
+                    <div class="col-md-3 col-sm-6 mb-3">
+                        <div class="amenity-item">
+                            <i class="bi bi-calendar2-week-fill text-primary me-2"></i>
+                            {{ res.name }}
+                            {% if res.price and res.price > 0 %}
+                            <span class="text-muted">(+{{ res.price|format_price }} ₽{% if res.unit_type %}/{{ res.unit_type.short_name }}{% endif %})</span>
+                            {% endif %}
+                            <span class="badge bg-light text-dark ms-1">с подтверждением</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="text-muted small">Ресурсы ограничены по времени и требуют подтверждения администратора после отправки заявки.</div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Back Button -->
         <div class="mt-5">
             <a href="{{ url_for('index') }}#properties" class="btn btn-outline-secondary">

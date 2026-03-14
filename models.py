@@ -188,6 +188,8 @@ class AmenityResource(db.Model):
     resource_type = db.Column(db.String(50), nullable=False)
     resource_type_id = db.Column(db.Integer, db.ForeignKey('amenity_resource_type.id'), index=True)
     is_active = db.Column(db.Boolean, default=True)
+    price = db.Column(db.Float, nullable=False, default=0.0)
+    unit_type_id = db.Column(db.Integer, db.ForeignKey('unit_type.id'), index=True)
     slot_minutes = db.Column(db.Integer, nullable=False, default=30)
     buffer_before_minutes = db.Column(db.Integer, nullable=False, default=0)
     buffer_after_minutes = db.Column(db.Integer, nullable=False, default=0)
@@ -197,6 +199,7 @@ class AmenityResource(db.Model):
 
     property = db.relationship('Property', backref=db.backref('amenity_resources', lazy=True, cascade="all, delete-orphan"))
     resource_type_obj = db.relationship('AmenityResourceType', backref=db.backref('resources', lazy=True))
+    unit_type = db.relationship('UnitType', backref='amenity_resources')
 
 class AmenityReservation(db.Model):
     __tablename__ = 'amenity_reservation'

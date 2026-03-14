@@ -1936,13 +1936,14 @@ def booking(property_id):
                     flash(msg, 'error')
                     return redirect(url_for('booking', property_id=property_id))
 
+                amenity_price_total = _calculate_amenity_price_total(resource, amenity_duration_minutes)
                 db.session.add(AmenityReservation(
                     resource_id=resource.id,
                     booking_id=booking.id,
                     start_dt=start_dt,
                     end_dt=end_dt,
                     status='requested',
-                    price_total=0.0,
+                    price_total=amenity_price_total,
                     notes=amenity_notes
                 ))
 
@@ -2240,6 +2241,31 @@ def _find_amenity_conflict(resource, start_dt, end_dt, exclude_reservation_id=No
         q = q.filter(AmenityReservation.id != exclude_reservation_id)
     return q.first()
 
+def _calculate_amenity_price_total(resource, duration_minutes):
+    try:
+        price = float(resource.price or 0.0)
+    except Exception:
+        price = 0.0
+
+    if price <= 0:
+        return 0.0
+
+    unit_short = ''
+    unit_name = ''
+    if getattr(resource, 'unit_type', None):
+        unit_short = (resource.unit_type.short_name or '').strip().lower()
+        unit_name = (resource.unit_type.name or '').strip().lower()
+
+    unit = f'{unit_short} {unit_name}'.strip()
+    if ('час' in unit) or ('ч' in unit) or (unit_short in ['h', 'hr', 'hour', 'hours']):
+        hours = max(0.0, float(duration_minutes) / 60.0)
+        return round(price * hours, 2)
+    if 'мин' in unit:
+        minutes = max(0.0, float(duration_minutes))
+        return round(price * minutes, 2)
+
+    return round(price, 2)
+
 def _generate_amenity_slots_for_day(resource, day, reservations):
     open_dt = datetime.combine(day, resource.open_time)
     close_dt = datetime.combine(day, resource.close_time)
@@ -2377,13 +2403,14 @@ def request_amenity(booking_token):
         return redirect(url_for('my_bookings'))
 
     try:
+        price_total = _calculate_amenity_price_total(resource, duration_minutes)
         reservation = AmenityReservation(
             resource_id=resource.id,
             booking_id=booking.id,
             start_dt=start_dt,
             end_dt=end_dt,
             status='requested',
-            price_total=0.0,
+            price_total=price_total,
             notes=notes
         )
         db.session.add(reservation)
@@ -2603,12 +2630,11 @@ def get_dashboard_stats(start_date, end_date, user=None):
         accessible_ids = [pid[0] for pid in accessible_ids]
         
         # Filter bookings to only those for properties the user owns or has access to
-        base_query = base_query.filter(
-            or_(
-                Booking.property_id.in_(accessible_ids),
-                Booking.property.has(Property.owner_id == user.id)
-            )
+        access_filter = or_(
+            Booking.property_id.in_(accessible_ids),
+            Booking.property.has(Property.owner_id == user.id)
         )
+        base_query = base_query.filter(access_filter)
     
     # Recent bookings for list (all in range, sorted by check-in desc)
     bookings_list = base_query.order_by(Booking.check_in.desc()).all()
@@ -2621,6 +2647,8 @@ def get_dashboard_stats(start_date, end_date, user=None):
         Booking.check_out >= start_date,
         Booking.check_in <= end_date
     )
+    if user and not user.is_superadmin:
+        revenue_query = revenue_query.filter(access_filter)
     
     # Выручка от подтвержденных бронирований (статусы confirmed и completed)
     confirmed_revenue = revenue_query.filter(
@@ -2762,12 +2790,28 @@ def admin_dashboard():
     today = datetime.now().date()
     start_date = today.replace(day=1)
     end_date = start_date + timedelta(days=90) # roughly 3 months
-    
-    calendar_bookings = Booking.query.filter(
+
+    bookings_calendar_query = Booking.query.filter(
         Booking.check_out >= start_date,
         Booking.check_in <= end_date,
         Booking.status.in_(['pending', 'confirmed', 'completed'])
-    ).all()
+    )
+
+    amenity_access_filter = None
+    if user and not user.is_superadmin:
+        accessible_ids = db.session.query(AdminPropertyAccess.property_id).filter(AdminPropertyAccess.user_id == user.id).all()
+        accessible_ids = [pid[0] for pid in accessible_ids]
+        booking_access_filter = or_(
+            Booking.property_id.in_(accessible_ids),
+            Booking.property.has(Property.owner_id == user.id)
+        )
+        bookings_calendar_query = bookings_calendar_query.filter(booking_access_filter)
+        amenity_access_filter = or_(
+            AmenityResource.property_id.in_(accessible_ids),
+            AmenityResource.property.has(Property.owner_id == user.id)
+        )
+
+    calendar_bookings = bookings_calendar_query.all()
     
     calendar_events = []
     for booking in calendar_bookings:
@@ -2790,7 +2834,42 @@ def admin_dashboard():
             'url': url_for('admin_booking_edit', booking_id=booking.id),
             'extendedProps': {
                 'guest_name': booking.guest_name,
-                'status': booking.status
+                'status': booking.status,
+                'kind': 'booking'
+            }
+        })
+
+    amenities_calendar_query = AmenityReservation.query.join(
+        AmenityResource, AmenityReservation.resource_id == AmenityResource.id
+    ).join(
+        Booking, AmenityReservation.booking_id == Booking.id
+    ).filter(
+        AmenityReservation.status.in_(['requested', 'approved', 'completed']),
+        AmenityReservation.start_dt >= datetime.combine(start_date, datetime.min.time()),
+        AmenityReservation.start_dt <= datetime.combine(end_date, datetime.max.time())
+    )
+    if amenity_access_filter is not None:
+        amenities_calendar_query = amenities_calendar_query.filter(amenity_access_filter)
+
+    amenity_events = amenities_calendar_query.order_by(AmenityReservation.start_dt.asc()).all()
+    for reservation in amenity_events:
+        status_color = '#6f42c1'
+        if reservation.status == 'requested':
+            status_color = '#7c3aed'
+        elif reservation.status == 'completed':
+            status_color = '#5b21b6'
+
+        calendar_events.append({
+            'title': f"{reservation.resource.property.name} · {reservation.resource.name} · {reservation.booking.guest_name}",
+            'start': reservation.start_dt.isoformat(),
+            'end': reservation.end_dt.isoformat(),
+            'color': status_color,
+            'textColor': '#ffffff',
+            'url': url_for('admin_amenity_resource_schedule', resource_id=reservation.resource_id, date=reservation.start_dt.strftime('%Y-%m-%d')),
+            'extendedProps': {
+                'guest_name': reservation.booking.guest_name,
+                'status': reservation.status,
+                'kind': 'amenity'
             }
         })
     
@@ -3750,15 +3829,21 @@ def admin_amenity_resources():
     if user and not user.is_superadmin:
         accessible_ids = db.session.query(AdminPropertyAccess.property_id).filter(AdminPropertyAccess.user_id == user.id).all()
         accessible_ids = [pid[0] for pid in accessible_ids]
-        resources_query = resources_query.filter(
-            or_(
-                AmenityResource.property_id.in_(accessible_ids),
-                AmenityResource.property.has(Property.owner_id == user.id)
-            )
+        amenity_access_filter = or_(
+            AmenityResource.property_id.in_(accessible_ids),
+            AmenityResource.property.has(Property.owner_id == user.id)
         )
+        resources_query = resources_query.filter(amenity_access_filter)
 
     resources = resources_query.order_by(AmenityResource.property_id.asc(), AmenityResource.name.asc()).all()
+    pending_reservations_query = AmenityReservation.query.join(AmenityResource, AmenityReservation.resource_id == AmenityResource.id).filter(
+        AmenityReservation.status == 'requested'
+    )
+    if user and not user.is_superadmin:
+        pending_reservations_query = pending_reservations_query.filter(amenity_access_filter)
+    pending_reservations = pending_reservations_query.order_by(AmenityReservation.start_dt.asc()).all()
     resource_types = AmenityResourceType.query.order_by(AmenityResourceType.name.asc()).all()
+    units = UnitType.query.order_by(UnitType.name.asc()).all()
     time_options = []
     for h in range(0, 24):
         for m in (0, 30):
@@ -3774,7 +3859,7 @@ def admin_amenity_resources():
             )
         )
     properties = properties_query.order_by(Property.name.asc()).all()
-    return render_template('admin/amenity_resources.html', resources=resources, properties=properties, resource_types=resource_types, time_options=time_options)
+    return render_template('admin/amenity_resources.html', resources=resources, properties=properties, resource_types=resource_types, time_options=time_options, pending_reservations=pending_reservations, units=units)
 
 @app.route('/admin/dictionaries/amenity-resource-types')
 @admin_required
@@ -3868,12 +3953,22 @@ def admin_amenity_resource_add():
         if slot_minutes <= 0:
             raise ValueError('slot_minutes must be > 0')
 
+        unit_type_id_raw = (request.form.get('unit_type_id') or '').strip()
+        unit_type = UnitType.query.get(int(unit_type_id_raw)) if unit_type_id_raw else None
+        price_raw = (request.form.get('price', '0') or '0').strip().replace(',', '.')
+        try:
+            price = max(0.0, float(price_raw))
+        except ValueError:
+            price = 0.0
+
         resource = AmenityResource(
             property_id=property_id,
             name=request.form['name'].strip(),
             resource_type=resource_type_obj.name,
             resource_type_id=resource_type_obj.id,
             is_active=bool(request.form.get('is_active')),
+            price=price,
+            unit_type_id=unit_type.id if unit_type else None,
             slot_minutes=slot_minutes,
             buffer_before_minutes=int(request.form.get('buffer_before_minutes', 0)),
             buffer_after_minutes=int(request.form.get('buffer_after_minutes', 0)),
@@ -3906,10 +4001,21 @@ def admin_amenity_resource_edit(resource_id):
         slot_minutes = int(round(float(slot_hours_raw) * 60))
         if slot_minutes <= 0:
             raise ValueError('slot_minutes must be > 0')
+
+        unit_type_id_raw = (request.form.get('unit_type_id') or '').strip()
+        unit_type = UnitType.query.get(int(unit_type_id_raw)) if unit_type_id_raw else None
+        price_raw = (request.form.get('price', '0') or '0').strip().replace(',', '.')
+        try:
+            price = max(0.0, float(price_raw))
+        except ValueError:
+            price = 0.0
+
         resource.name = request.form['name'].strip()
         resource.resource_type = resource_type_obj.name
         resource.resource_type_id = resource_type_obj.id
         resource.is_active = bool(request.form.get('is_active'))
+        resource.price = price
+        resource.unit_type_id = unit_type.id if unit_type else None
         resource.slot_minutes = slot_minutes
         resource.buffer_before_minutes = int(request.form.get('buffer_before_minutes', 0))
         resource.buffer_after_minutes = int(request.form.get('buffer_after_minutes', 0))
@@ -3960,6 +4066,7 @@ def admin_amenity_resource_schedule(resource_id):
 
     reservations = AmenityReservation.query.filter(
         AmenityReservation.resource_id == resource.id,
+        AmenityReservation.status.in_(['requested', 'approved', 'completed']),
         AmenityReservation.start_dt < end_dt,
         AmenityReservation.end_dt > start_dt
     ).order_by(AmenityReservation.start_dt.asc()).all()
@@ -4054,7 +4161,7 @@ def admin_amenity_reservation_create(resource_id):
             start_dt=start_dt,
             end_dt=end_dt,
             status='approved',
-            price_total=0.0,
+            price_total=_calculate_amenity_price_total(resource, duration_minutes),
             notes=notes
         )
         db.session.add(reservation)
@@ -4087,6 +4194,9 @@ def admin_amenity_reservation_approve(reservation_id):
         if conflict:
             flash('Нельзя подтвердить: есть пересечение по времени (с учетом техперерыва).', 'error')
         else:
+            if (reservation.price_total or 0.0) <= 0 and (resource.price or 0.0) > 0:
+                duration_minutes = int((reservation.end_dt - reservation.start_dt).total_seconds() / 60)
+                reservation.price_total = _calculate_amenity_price_total(resource, duration_minutes)
             reservation.status = 'approved'
             db.session.commit()
             flash('Услуга подтверждена.', 'success')

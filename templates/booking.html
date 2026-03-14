@@ -240,7 +240,7 @@
                                                     <select name="amenity_resource_id" class="form-select">
                                                         <option value="" selected>Не выбирать</option>
                                                         {% for res in amenity_resources %}
-                                                            <option value="{{ res.id }}">{{ res.name }}</option>
+                                                            <option value="{{ res.id }}">{{ res.name }}{% if res.price and res.price > 0 %} (+{{ res.price|format_price }} ₽{% if res.unit_type %}/{{ res.unit_type.short_name }}{% endif %}){% endif %}</option>
                                                         {% endfor %}
                                                     </select>
                                                 </div>
