@@ -27,7 +27,7 @@ from email.header import decode_header
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
-from sqlalchemy import inspect, or_
+from sqlalchemy import inspect, or_, text
 from sqlalchemy.orm import selectinload
 import requests
 import io
@@ -82,6 +82,21 @@ from models import db, User, UnitType, OptionType, CharacteristicType, PropertyO
 # Initialize db with app
 db.init_app(app)
 migrate = Migrate(app, db)
+
+# Check and add display_order column if missing (Fix for deployment)
+try:
+    with app.app_context():
+        inspector = inspect(db.engine)
+        if 'property' in inspector.get_table_names():
+            columns = [col['name'] for col in inspector.get_columns('property')]
+            if 'display_order' not in columns:
+                with db.engine.connect() as conn:
+                    conn.execute(text('ALTER TABLE property ADD COLUMN display_order INTEGER DEFAULT 0'))
+                    if hasattr(conn, 'commit'):
+                        conn.commit()
+                print("Auto-migration: Added display_order column to property table")
+except Exception as e:
+    print(f"Auto-migration skipped: {e}")
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'webm', 'ogg', 'mov'}
