@@ -63,7 +63,7 @@
     </div>
 
     <div class="col-md-4">
-        <div class="card shadow-sm">
+        <div class="card shadow-sm mb-4">
             <div class="card-header bg-white py-3">
                 <h5 class="mb-0">Журнал операций</h5>
             </div>
@@ -87,6 +87,31 @@
                     </div>
                     {% endfor %}
                 </div>
+            </div>
+        </div>
+
+        <div class="card border-danger shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>Опасная зона</h5>
+            </div>
+            <div class="card-body">
+                <p class="card-text text-danger small">
+                    <strong>Внимание!</strong> Это действие необратимо. Будут удалены:
+                    <ul class="mb-2 ps-3">
+                        <li>Все объекты и типы</li>
+                        <li>Все бронирования, заявки, отзывы</li>
+                        <li>Все пользователи (включая вас)</li>
+                        <li>Все настройки сайта</li>
+                    </ul>
+                    После очистки будет создан единственный администратор: <strong>admin / admin123</strong>
+                </p>
+                
+                <form action="{{ url_for('admin_reset_db') }}" method="POST" onsubmit="return confirm('ВЫ УВЕРЕНЫ? Это действие удалит ВСЕ данные без возможности восстановления!');">
+                    <input type="hidden" name="confirm" value="yes">
+                    <button type="submit" class="btn btn-danger w-100">
+                        <i class="bi bi-trash-fill me-2"></i>Полная очистка БД
+                    </button>
+                </form>
             </div>
         </div>
     </div>

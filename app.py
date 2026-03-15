@@ -3427,6 +3427,7 @@ def admin_admin_add():
         can_edit_properties = 'can_edit_properties' in request.form
         can_delete_properties = 'can_delete_properties' in request.form
         can_access_general_settings = 'can_access_general_settings' in request.form
+        is_superadmin = 'is_superadmin' in request.form
 
         if not username or not email or not password:
             flash('Заполните username, email и пароль.', 'error')
@@ -3446,7 +3447,7 @@ def admin_admin_add():
             phone=phone,
             password_hash=generate_password_hash(password),
             is_admin=True,
-            is_superadmin=False,
+            is_superadmin=is_superadmin,
             can_create_properties=can_create_properties,
             can_edit_properties=can_edit_properties,
             can_delete_properties=can_delete_properties,
@@ -3454,10 +3455,21 @@ def admin_admin_add():
         )
         db.session.add(admin_user)
         db.session.commit()
+        
+        # Grant access to selected properties if any
+        selected_ids_raw = request.form.getlist('property_access')
+        for pid in selected_ids_raw:
+            try:
+                db.session.add(AdminPropertyAccess(user_id=admin_user.id, property_id=int(pid)))
+            except ValueError:
+                pass
+        db.session.commit()
+
         flash('Администратор создан.', 'success')
         return redirect(url_for('admin_admins'))
 
-    return render_template('admin/edit_admin.html')
+    properties = Property.query.order_by(Property.name).all()
+    return render_template('admin/edit_admin.html', properties=properties)
 
 @app.route('/admin/users')
 @admin_required
@@ -3506,6 +3518,12 @@ def admin_admin_edit(user_id):
     existing_access_ids = {row.property_id for row in AdminPropertyAccess.query.filter_by(user_id=admin_user.id).all()}
 
     if request.method == 'POST':
+        # Запрет на редактирование прав главного суперадмина другими суперадминами
+        # (предполагаем, что admin_user с id=1 или username='admin' - это главный админ)
+        if admin_user.username == 'admin' and get_current_admin().username != 'admin':
+             flash('Вы не можете редактировать данные главного суперадминистратора.', 'error')
+             return redirect(url_for('admin_admins'))
+
         email_val = (request.form.get('email') or '').strip()
         phone_val = (request.form.get('phone') or '').strip()
         new_password = request.form.get('new_password') or ''
@@ -3522,6 +3540,12 @@ def admin_admin_edit(user_id):
         admin_user.can_edit_properties = 'can_edit_properties' in request.form
         admin_user.can_delete_properties = 'can_delete_properties' in request.form
         admin_user.can_access_general_settings = 'can_access_general_settings' in request.form
+        
+        # Superadmin toggle
+        # Only allow changing if not editing self (to prevent accidental self-demotion) 
+        # OR if editing self but not removing the last superadmin (logic simplified here)
+        if admin_user.username != 'admin':
+             admin_user.is_superadmin = 'is_superadmin' in request.form
 
         if new_password:
             admin_user.password_hash = generate_password_hash(new_password)
@@ -3569,8 +3593,9 @@ def admin_admin_delete(user_id):
         return redirect(url_for('admin_admins'))
     
     # Prevent deletion of other superadmins (only current superadmin can delete regular admins)
-    if admin_to_delete.is_superadmin:
-        flash('Нельзя удалить другого суперадмина.', 'error')
+    # UPDATED: Allow deleting other superadmins if they are not the main 'admin'
+    if admin_to_delete.username == 'admin':
+        flash('Нельзя удалить главного суперадмина.', 'error')
         return redirect(url_for('admin_admins'))
     
     # Delete admin property access records
@@ -5406,7 +5431,7 @@ def admin_visitor_activity_log():
 def admin_reset_db():
     if request.form.get('confirm') != 'yes':
         flash('Для сброса базы данных необходимо подтверждение.', 'error')
-        return redirect(url_for('admin_system_settings'))
+        return redirect(url_for('admin_backups'))
         
     try:
         # Clear all tables in correct order (dependent first)
@@ -5450,7 +5475,7 @@ def admin_reset_db():
         db.session.rollback()
         print(f"Error resetting database: {e}")
         flash(f'Ошибка при сбросе базы данных: {str(e)}', 'error')
-        return redirect(url_for('admin_system_settings'))
+        return redirect(url_for('admin_backups'))
 
 # --- Backups ---
 BACKUP_DIR = os.path.join(app.instance_path, 'backups')

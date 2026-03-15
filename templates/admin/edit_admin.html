@@ -66,6 +66,17 @@
                     <div class="mb-3">
                         <label class="form-label">Права в админке</label>
                         <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_superadmin" id="is_superadmin"
+                                   {% if admin_user and admin_user.is_superadmin %}checked{% endif %}
+                                   {% if admin_user and admin_user.username == 'admin' %}disabled{% endif %}>
+                            <label class="form-check-label fw-bold" for="is_superadmin">Суперадминистратор (полный доступ)</label>
+                            {% if admin_user and admin_user.username == 'admin' %}
+                                <div class="form-text text-muted">Права главного суперадмина нельзя изменить.</div>
+                            {% else %}
+                                <div class="form-text text-muted">Дает доступ ко всем разделам, включая управление другими администраторами и системными настройками.</div>
+                            {% endif %}
+                        </div>
+                        <div class="form-check mt-2">
                             <input class="form-check-input" type="checkbox" name="can_access_general_settings" id="can_access_general_settings"
                                    {% if admin_user and admin_user.can_access_general_settings %}checked{% endif %}>
                             <label class="form-check-label" for="can_access_general_settings">Доступ к «Общие настройки»</label>
