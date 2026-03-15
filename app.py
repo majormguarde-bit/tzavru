@@ -4045,21 +4045,30 @@ def admin_property_edit(property_id):
             from urllib.parse import unquote
             filename = unquote(url[len(prefix):])
             
-            # Use os.path.join with app.root_path to build a robust absolute path
-            # This works correctly on both Windows and Linux hosting
-            filepath = os.path.join(app.root_path, 'static', 'uploads', filename)
+            # Use os.path.join with app.config['UPLOAD_FOLDER'] which is typically correctly configured 
+            # for both local and production environments
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             
+            # Fallback path if the first one doesn't work (some hostings might have different cwd)
+            fallback_filepath = os.path.join(app.root_path, 'static', 'uploads', filename)
+            
+            target_path = None
             if os.path.exists(filepath):
+                target_path = filepath
+            elif os.path.exists(fallback_filepath):
+                target_path = fallback_filepath
+                
+            if target_path:
                 try:
-                    img_info['size'] = os.path.getsize(filepath)
+                    img_info['size'] = os.path.getsize(target_path)
                     from PIL import Image
-                    with Image.open(filepath) as img:
+                    with Image.open(target_path) as img:
                         img_info['width'], img_info['height'] = img.size
                     img_info['filename'] = filename
                 except Exception as e:
-                    print(f"Error getting image stats for {filepath}: {e}")
+                    print(f"Error getting image stats for {target_path}: {e}")
             else:
-                print(f"Image not found on disk: {filepath}")
+                print(f"Image not found on disk: {filepath} AND {fallback_filepath}")
                 
         return img_info
     
