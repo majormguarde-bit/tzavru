@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="{% block meta_description %}{{ site_settings.site_name if site_settings else 'Imperial Collection' }} - {{ site_settings.slogan if site_settings and site_settings.slogan else 'Три грани настоящего отдыха в Псковской области' }}{% endblock %}">
+    {% block meta_keywords %}{% endblock %}
     
     <!-- Canonical URL -->
     <link rel="canonical" href="{{ request.base_url }}">

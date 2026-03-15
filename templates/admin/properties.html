@@ -67,7 +67,7 @@
                         </td>
                         <td>{{ property.location }}</td>
                         <td>{{ property.price_per_night|format_price }} ₽</td>
-                        <td>{{ property.capacity }} чел.</td>
+                        <td>до {{ property.capacity }} чел. (база: {{ property.base_guests }})</td>
                         <td>
                             {% if property.is_available %}
                                 <span class="badge bg-success">Доступен</span>

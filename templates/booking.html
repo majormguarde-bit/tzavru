@@ -809,13 +809,14 @@
             onChange: function(selectedDates, dateStr, instance) {
                 // When check-in changes, update check-out minDate
                 if (selectedDates.length > 0) {
-                    // Start date + 1 day minimum
+                    // Start date + minRentDays minimum
+                    const minRentDays = {{ property.min_rent_days|default(1) }};
                     const nextDay = new Date(selectedDates[0]);
-                    nextDay.setDate(nextDay.getDate() + 1);
+                    nextDay.setDate(nextDay.getDate() + minRentDays);
                     checkOutPicker.set('minDate', nextDay);
                     
-                    // Clear check-out if it's before new check-in
-                    if (checkOutPicker.selectedDates.length > 0 && checkOutPicker.selectedDates[0] <= selectedDates[0]) {
+                    // Clear check-out if it's before new check-in + minRentDays
+                    if (checkOutPicker.selectedDates.length > 0 && checkOutPicker.selectedDates[0] < nextDay) {
                         checkOutPicker.clear();
                     }
                     updateAmenityDateBounds(fp.selectedDates[0], checkOutPicker.selectedDates[0]);
@@ -882,15 +883,32 @@
                     totalPriceDiv.innerHTML = '<div class="text-danger fw-bold">Даты недоступны</div>';
                     return;
                 }
+
+                const diffTime = Math.abs(checkOutDate - checkInDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const minRentDays = {{ property.min_rent_days|default(1) }};
+                
+                if (diffDays < minRentDays) {
+                    availabilityMsg.className = 'alert alert-danger';
+                    availabilityMsg.textContent = `Минимальный срок аренды: ${minRentDays} дн.`;
+                    availabilityMsg.classList.remove('d-none');
+                    totalPriceDiv.innerHTML = '<div class="text-danger fw-bold">Недопустимый срок аренды</div>';
+                    return;
+                }
                 
                 availabilityMsg.className = 'alert alert-success';
                 availabilityMsg.textContent = '✓ Даты доступны';
                 availabilityMsg.classList.remove('d-none');
 
-                const diffTime = Math.abs(checkOutDate - checkInDate);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                 const guestsCount = Math.max(1, Number(guestsInput ? guestsInput.value : 1) || 1);
-                const baseTotal = diffDays * guestsCount * pricePerNight;
+                
+                // Calculate guest price based on base capacity
+                const baseGuests = {{ property.base_guests|default(2) }};
+                const extraGuestPrice = {{ property.extra_guest_price|default(0) }};
+                const extraGuestsCount = Math.max(0, guestsCount - baseGuests);
+                const nightlyRate = pricePerNight + (extraGuestsCount * extraGuestPrice);
+                
+                const baseTotal = diffDays * nightlyRate;
                 let optionsTotal = 0;
                 let resourcesTotal = 0;
                 let selectedOptionsRows = '';
@@ -937,14 +955,14 @@
                 }
 
                 totalPriceDiv.innerHTML = `
-                    <div class="small text-muted mb-2">Гостей: ${guestsCount} • Ночей: ${diffDays}</div>
+                    <div class="small text-muted mb-2">Гостей: ${guestsCount} (включено: ${baseGuests}, доп: ${extraGuestsCount}) • Ночей: ${diffDays}</div>
                     <div class="small text-muted mb-2">Координаты: ${coordinatesText}</div>
                     <div class="table-responsive">
                         <table class="table table-sm booking-summary-table mb-0">
                             <tbody>
                                 <tr>
                                     <td>Базовое проживание</td>
-                                    <td class="text-end">${guestsCount} × ${diffDays} × ${pricePerNight.toLocaleString('ru-RU')}</td>
+                                    <td class="text-end">${diffDays} ноч. × ${nightlyRate.toLocaleString('ru-RU')} ₽/ночь</td>
                                     <td class="text-end">${baseTotal.toLocaleString('ru-RU')} ₽</td>
                                 </tr>
                                 ${selectedOptionsRows}

@@ -1885,6 +1885,14 @@ def booking(property_id):
     
     # Check if user is authenticated and email is verified for POST requests
     if request.method == 'POST':
+        if not property.is_available:
+            msg = 'Этот объект временно недоступен для бронирования.'
+            is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
+            if is_ajax:
+                return jsonify({'status': 'error', 'message': msg})
+            flash(msg, 'error')
+            return redirect(url_for('property_detail', id=property_id))
+            
         if current_user_obj and not current_user_obj.is_email_verified:
             msg = 'Для бронирования необходимо подтвердить ваш email. Пожалуйста, проверьте вашу почту и подтвердите email.'
             is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or 'application/json' in request.headers.get('Accept', '')
@@ -1953,6 +1961,13 @@ def booking(property_id):
                 return redirect(url_for('booking', property_id=property_id))
 
             days = (check_out - check_in).days
+            
+            if days < property.min_rent_days:
+                msg = f'Минимальный срок аренды для данного объекта: {property.min_rent_days} дн.'
+                if is_ajax: return jsonify({'status': 'error', 'message': msg})
+                flash(msg, 'error')
+                return redirect(url_for('booking', property_id=property_id))
+                
             guests_count = int(request.form.get('guests_count', 1))
             if guests_count < 1:
                 msg = 'Количество гостей должно быть не меньше 1'
@@ -2015,7 +2030,11 @@ def booking(property_id):
                 })
                 options_total += option_price * option_qty
 
-            total_price = days * guests_count * property.price_per_night + options_total
+            # Calculate base and extra guest price
+            extra_guests = max(0, guests_count - property.base_guests)
+            nightly_rate = property.price_per_night + (extra_guests * property.extra_guest_price)
+            
+            total_price = days * nightly_rate + options_total
 
             # Используем email авторизованного пользователя, если он вошел в систему
             guest_email = request.form['guest_email']
@@ -3741,7 +3760,11 @@ def add_property():
             video_url=request.form.get('video_url'),
             local_video_urls=json.dumps(local_video_urls),
             price_per_night=float(request.form['price_per_night']),
+            base_guests=int(request.form.get('base_guests', 2)),
+            extra_guest_price=float(request.form.get('extra_guest_price', 0)),
             capacity=int(request.form['capacity']),
+            min_rent_days=int(request.form.get('min_rent_days', 1)),
+            seo_keywords=request.form.get('seo_keywords', ''),
             amenities=json.dumps(amenities),
             features=json.dumps(features),
             latitude=latitude,
@@ -3861,17 +3884,42 @@ def admin_property_edit(property_id):
         
         # Determine new main
         selected_main = request.form.get('set_main_image')
+        image_order_raw = request.form.get('image_order')
         new_main = None
         
-        if selected_main and selected_main in kept_images:
+        if image_order_raw:
+            try:
+                ordered_images = json.loads(image_order_raw)
+                # Filter out deleted images
+                ordered_images = [img for img in ordered_images if img in kept_images]
+                
+                if ordered_images:
+                    new_main = ordered_images[0]
+                    final_pool = ordered_images + new_urls
+                else:
+                    final_pool = new_urls
+            except json.JSONDecodeError:
+                final_pool = kept_images + new_urls
+        else:
+            final_pool = kept_images + new_urls
+            
+        if not new_main and selected_main and selected_main in kept_images:
             new_main = selected_main
-        elif final_pool:
+        elif not new_main and final_pool:
             new_main = final_pool[0]
             
         new_gallery = [img for img in final_pool if img != new_main]
         
+        # Deduplicate while preserving order
+        seen = set()
+        new_gallery_dedup = []
+        for img in new_gallery:
+            if img not in seen:
+                seen.add(img)
+                new_gallery_dedup.append(img)
+        
         property.image_url = new_main
-        property.gallery_urls = json.dumps(new_gallery)
+        property.gallery_urls = json.dumps(new_gallery_dedup)
         property.video_url = request.form.get('video_url')
         
         # Handle local video upload
@@ -3894,7 +3942,11 @@ def admin_property_edit(property_id):
         property.local_video_urls = json.dumps(current_local_videos)
 
         property.price_per_night = float(request.form['price_per_night'])
+        property.base_guests = int(request.form.get('base_guests', 2))
+        property.extra_guest_price = float(request.form.get('extra_guest_price', 0))
         property.capacity = int(request.form['capacity'])
+        property.min_rent_days = int(request.form.get('min_rent_days', 1))
+        property.seo_keywords = request.form.get('seo_keywords', '')
         property.is_available = 'is_available' in request.form
         
         amenities = request.form.get('amenities', '').strip().split('\n')
@@ -5399,6 +5451,110 @@ def admin_reset_db():
         print(f"Error resetting database: {e}")
         flash(f'Ошибка при сбросе базы данных: {str(e)}', 'error')
         return redirect(url_for('admin_system_settings'))
+
+# --- Backups ---
+BACKUP_DIR = os.path.join(app.instance_path, 'backups')
+BACKUP_LOG_FILE = os.path.join(BACKUP_DIR, 'backup_log.txt')
+
+def log_backup_action(action, details=""):
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = f"[{timestamp}] {action} - {details}\n"
+    try:
+        with open(BACKUP_LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+    except Exception as e:
+        print(f"Error writing to backup log: {e}")
+
+@app.route('/admin/backups')
+@superadmin_required
+def admin_backups():
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    backups = []
+    for filename in os.listdir(BACKUP_DIR):
+        if filename.endswith('.db'):
+            filepath = os.path.join(BACKUP_DIR, filename)
+            stat = os.stat(filepath)
+            backups.append({
+                'filename': filename,
+                'size': stat.st_size,
+                'created_at': datetime.fromtimestamp(stat.st_mtime)
+            })
+    backups.sort(key=lambda x: x['created_at'], reverse=True)
+    
+    logs = []
+    if os.path.exists(BACKUP_LOG_FILE):
+        with open(BACKUP_LOG_FILE, 'r', encoding='utf-8') as f:
+            logs = f.readlines()
+    logs.reverse()
+    
+    return render_template('admin/backups.html', backups=backups, logs=logs)
+
+@app.route('/admin/backups/create', methods=['POST'])
+@superadmin_required
+def admin_backup_create():
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"imperial_backup_{timestamp}.db"
+    backup_path = os.path.join(BACKUP_DIR, backup_filename)
+    db_path = os.path.join(app.instance_path, 'imperial.db')
+    
+    try:
+        import shutil
+        shutil.copy2(db_path, backup_path)
+        log_backup_action("CREATE", f"Создан бекап: {backup_filename}")
+        flash(f'Резервная копия {backup_filename} успешно создана.', 'success')
+    except Exception as e:
+        log_backup_action("ERROR", f"Ошибка создания бекапа: {e}")
+        flash(f'Ошибка при создании резервной копии: {e}', 'error')
+        
+    return redirect(url_for('admin_backups'))
+
+@app.route('/admin/backups/restore/<filename>', methods=['POST'])
+@superadmin_required
+def admin_backup_restore(filename):
+    backup_path = os.path.join(BACKUP_DIR, filename)
+    db_path = os.path.join(app.instance_path, 'imperial.db')
+    
+    if not os.path.exists(backup_path) or not filename.endswith('.db'):
+        flash('Файл резервной копии не найден или недопустим.', 'error')
+        return redirect(url_for('admin_backups'))
+        
+    try:
+        import shutil
+        # Закрываем соединения с БД перед заменой файла
+        db.session.remove()
+        db.engine.dispose()
+        
+        # Копируем файл бекапа на место основной базы данных
+        shutil.copy2(backup_path, db_path)
+        log_backup_action("RESTORE", f"База данных восстановлена из бекапа: {filename}")
+        flash(f'База данных успешно восстановлена из {filename}.', 'success')
+        
+        # Разлогиниваем текущего пользователя, так как сессии могут быть неактуальны
+        session.clear()
+        return redirect(url_for('login'))
+    except Exception as e:
+        log_backup_action("ERROR", f"Ошибка восстановления из {filename}: {e}")
+        flash(f'Ошибка при восстановлении базы данных: {e}', 'error')
+        return redirect(url_for('admin_backups'))
+
+@app.route('/admin/backups/delete/<filename>', methods=['POST'])
+@superadmin_required
+def admin_backup_delete(filename):
+    backup_path = os.path.join(BACKUP_DIR, filename)
+    if os.path.exists(backup_path) and filename.endswith('.db'):
+        try:
+            os.remove(backup_path)
+            log_backup_action("DELETE", f"Удален бекап: {filename}")
+            flash(f'Резервная копия {filename} удалена.', 'success')
+        except Exception as e:
+            log_backup_action("ERROR", f"Ошибка удаления {filename}: {e}")
+            flash(f'Ошибка при удалении: {e}', 'error')
+    else:
+        flash('Файл не найден.', 'error')
+        
+    return redirect(url_for('admin_backups'))
 
 @app.route('/admin/dictionaries/property-types')
 @admin_required

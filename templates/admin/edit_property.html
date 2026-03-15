@@ -49,6 +49,40 @@
         }
     }
 
+    document.addEventListener('DOMContentLoaded', function() {
+        const sortableGallery = document.getElementById('sortable-gallery');
+        if (sortableGallery) {
+            new Sortable(sortableGallery, {
+                animation: 150,
+                ghostClass: 'bg-light',
+                onEnd: function() {
+                    updateImageOrder();
+                }
+            });
+            updateImageOrder(); // Initialize order on load
+        }
+    });
+
+    function updateImageOrder() {
+        const items = document.querySelectorAll('.gallery-item');
+        const order = [];
+        items.forEach((item, index) => {
+            const url = item.getAttribute('data-url');
+            if (url) order.push(url);
+            
+            // Update UI to show the first item as main
+            const card = item.querySelector('.card');
+            const badge = item.querySelector('.main-badge');
+            if (index === 0) {
+                card.classList.add('border-primary');
+                badge.classList.remove('d-none');
+            } else {
+                card.classList.remove('border-primary');
+                badge.classList.add('d-none');
+            }
+        });
+        document.getElementById('image_order').value = JSON.stringify(order);
+    }
 </script>
 {% endblock %}
 
@@ -124,23 +158,20 @@
                             <div class="card-body">
                                 {% if property %}
                                 <div class="alert alert-info py-2">
-                                    <small><i class="bi bi-info-circle"></i> Отметьте главное фото (радио-кнопка) или удалите ненужные (галочка "Удалить").</small>
+                                    <small><i class="bi bi-info-circle"></i> Перетаскивайте карточки, чтобы изменить порядок отображения фото. Первое фото в списке станет главным.</small>
                                 </div>
-                                <div class="row g-3 mb-3">
-                                    {# Main Image #}
+                                <div class="row g-3 mb-3" id="sortable-gallery">
+                                    <input type="hidden" name="image_order" id="image_order" value="">
+                                    {# Main Image (now just part of the list) #}
                                     {% if property.image_url %}
-                                    <div class="col-md-3 col-sm-4 col-6">
-                                        <div class="card h-100 border-primary">
+                                    <div class="col-md-3 col-sm-4 col-6 gallery-item" data-url="{{ property.image_url }}">
+                                        <div class="card h-100 border-primary" style="cursor: grab;">
                                             <div class="position-relative">
                                                 <img src="{{ property.image_url }}" class="card-img-top" style="height: 120px; object-fit: cover;" alt="Property Main Image" loading="lazy">
-                                                <span class="position-absolute top-0 end-0 badge bg-primary m-1">Главное</span>
+                                                <span class="position-absolute top-0 end-0 badge bg-primary m-1 main-badge">Главное</span>
                                             </div>
                                             <div class="card-body p-2 text-center">
-                                                <div class="form-check form-check-inline">
-                                                    <input class="form-check-input" type="radio" name="set_main_image" id="main_img" value="{{ property.image_url }}" checked>
-                                                    <label class="form-check-label small" for="main_img">Главное</label>
-                                                </div>
-                                                <div class="form-check form-check-inline">
+                                                <div class="form-check d-inline-block">
                                                     <input class="form-check-input" type="checkbox" name="delete_images" value="{{ property.image_url }}" id="del_main">
                                                     <label class="form-check-label small text-danger" for="del_main">Удалить</label>
                                                 </div>
@@ -152,15 +183,14 @@
                                     {# Gallery Images #}
                                     {% if property.gallery_urls %}
                                         {% for img_url in property.gallery_urls|from_json %}
-                                        <div class="col-md-3 col-sm-4 col-6">
-                                            <div class="card h-100">
-                                                <img src="{{ img_url }}" class="card-img-top" style="height: 120px; object-fit: cover;" alt="Property Gallery Image" loading="lazy">
+                                        <div class="col-md-3 col-sm-4 col-6 gallery-item" data-url="{{ img_url }}">
+                                            <div class="card h-100" style="cursor: grab;">
+                                                <div class="position-relative">
+                                                    <img src="{{ img_url }}" class="card-img-top" style="height: 120px; object-fit: cover;" alt="Property Gallery Image" loading="lazy">
+                                                    <span class="position-absolute top-0 end-0 badge bg-primary m-1 main-badge d-none">Главное</span>
+                                                </div>
                                                 <div class="card-body p-2 text-center">
-                                                    <div class="form-check form-check-inline">
-                                                        <input class="form-check-input" type="radio" name="set_main_image" id="gal_img_{{ loop.index }}" value="{{ img_url }}">
-                                                        <label class="form-check-label small" for="gal_img_{{ loop.index }}">Главное</label>
-                                                    </div>
-                                                    <div class="form-check form-check-inline">
+                                                    <div class="form-check d-inline-block">
                                                         <input class="form-check-input" type="checkbox" name="delete_images" value="{{ img_url }}" id="del_gal_{{ loop.index }}">
                                                         <label class="form-check-label small text-danger" for="del_gal_{{ loop.index }}">Удалить</label>
                                                     </div>
@@ -218,21 +248,49 @@
                         {% endif %}
                     </div>
 
-                        <div class="col-md-4">
-                            <label class="form-label">Цена за ночь (₽) *</label>
+                        <div class="col-md-3">
+                            <label class="form-label">Базовая цена (₽) *</label>
                             <input type="number" name="price_per_night" class="form-control" 
                                    value="{{ property.price_per_night if property else '' }}" 
                                    min="0" step="100" required>
                         </div>
                         
-                        <div class="col-md-4">
-                            <label class="form-label">Вместимость (чел.) *</label>
+                        <div class="col-md-3">
+                            <label class="form-label">Базовое кол-во гостей *</label>
+                            <input type="number" name="base_guests" class="form-control" 
+                                   value="{{ property.base_guests if property else '2' }}" 
+                                   min="1" required>
+                        </div>
+
+                        <div class="col-md-3">
+                            <label class="form-label">Доп. место (₽) *</label>
+                            <input type="number" name="extra_guest_price" class="form-control" 
+                                   value="{{ property.extra_guest_price if property else '0' }}" 
+                                   min="0" step="100" required>
+                        </div>
+                        
+                        <div class="col-md-3">
+                            <label class="form-label">Макс. вместимость *</label>
                             <input type="number" name="capacity" class="form-control" 
                                    value="{{ property.capacity if property else '' }}" 
                                    min="1" required>
                         </div>
                         
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <label class="form-label">Мин. срок аренды (дней) *</label>
+                            <input type="number" name="min_rent_days" class="form-control" 
+                                   value="{{ property.min_rent_days if property else '1' }}" 
+                                   min="1" required>
+                        </div>
+
+                        <div class="col-md-9">
+                            <label class="form-label">SEO ключевые слова (через запятую)</label>
+                            <input type="text" name="seo_keywords" class="form-control" 
+                                   value="{{ property.seo_keywords if property and property.seo_keywords else 'аренда, отдых, дом, коттедж, Псковская область' }}" 
+                                   placeholder="Введите ключевые слова для поиска">
+                        </div>
+
+                        <div class="col-md-4 mt-3">
                             <label class="form-label">Статус</label>
                             <div class="form-check form-switch mt-2">
                                 <input type="checkbox" name="is_available" class="form-check-input" 

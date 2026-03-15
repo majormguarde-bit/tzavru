@@ -1,0 +1,94 @@
+{% extends "admin/layout.html" %}
+
+{% block page_title %}Резервные копии базы данных{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Список резервных копий</h5>
+                <form action="{{ url_for('admin_backup_create') }}" method="POST" class="d-inline">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="bi bi-plus-circle me-1"></i> Создать бекап
+                    </button>
+                </form>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-4">Имя файла</th>
+                                <th>Размер</th>
+                                <th>Дата создания</th>
+                                <th class="text-end pe-4">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for backup in backups %}
+                            <tr>
+                                <td class="ps-4">
+                                    <i class="bi bi-database me-2 text-secondary"></i>
+                                    <strong>{{ backup.filename }}</strong>
+                                </td>
+                                <td>{{ (backup.size / 1024)|round(1) }} KB</td>
+                                <td>{{ backup.created_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                                <td class="text-end pe-4">
+                                    <form action="{{ url_for('admin_backup_restore', filename=backup.filename) }}" method="POST" class="d-inline me-2" onsubmit="return confirm('ВНИМАНИЕ: Текущая база данных будет перезаписана! Это действие нельзя отменить. Вы уверены, что хотите восстановить базу данных из этого бекапа?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-warning" title="Восстановить">
+                                            <i class="bi bi-arrow-counterclockwise"></i> Восстановить
+                                        </button>
+                                    </form>
+                                    <form action="{{ url_for('admin_backup_delete', filename=backup.filename) }}" method="POST" class="d-inline" onsubmit="return confirm('Вы уверены, что хотите удалить этот бекап?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Удалить">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center py-4 text-muted">
+                                    <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                                    Резервные копии не найдены
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0">Журнал операций</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                    {% for log in logs %}
+                    <div class="list-group-item list-group-item-action py-2">
+                        <small class="text-muted d-block" style="font-size: 0.75rem;">
+                            {% set parts = log.split(']', 1) %}
+                            {% if parts|length == 2 %}
+                                {{ parts[0][1:] }} <!-- Дата и время -->
+                                <span class="d-block mt-1 text-dark" style="font-size: 0.85rem;">{{ parts[1].strip() }}</span>
+                            {% else %}
+                                {{ log }}
+                            {% endif %}
+                        </small>
+                    </div>
+                    {% else %}
+                    <div class="p-3 text-center text-muted small">
+                        Журнал пуст
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

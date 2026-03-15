@@ -282,7 +282,7 @@
                             </div>
                             <div class="meta-item">
                                 <i class="bi bi-currency-ruble"></i>
-                                <span>{{ property.price_per_night|format_price }} ₽/ночь</span>
+                                <span>от {{ property.price_per_night|format_price }} ₽/ночь</span>
                             </div>
                         </div>
                         
@@ -298,10 +298,17 @@
                                style="cursor: pointer;">
                                 <i class="bi bi-geo-alt-fill h5 mb-0"></i>
                             </span>
+                            {% if property.is_available %}
                             <a href="{{ url_for('property_detail', id=property.id) }}" 
                                class="btn btn-outline-primary flex-grow-1">
                                 Подробнее <i class="bi bi-arrow-right ms-2"></i>
                             </a>
+                            {% else %}
+                            <a href="{{ url_for('property_detail', id=property.id) }}" 
+                               class="btn btn-secondary flex-grow-1">
+                                Недоступен
+                            </a>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

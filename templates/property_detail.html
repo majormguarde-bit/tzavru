@@ -4,6 +4,12 @@
 
 {% block meta_description %}{{ property.short_description if property.short_description else (property.full_description[:200] if property.full_description else 'Прекрасное место для отдыха в Псковской области') }}{% endblock %}
 
+{% block meta_keywords %}
+{% if property.seo_keywords %}
+<meta name="keywords" content="{{ property.seo_keywords }}">
+{% endif %}
+{% endblock %}
+
 {% block og_title %}{{ property.name }} - {{ site_settings.site_name if site_settings else 'Imperial Collection' }}{% endblock %}
 {% block og_description %}{{ property.short_description if property.short_description else (property.full_description[:200] if property.full_description else 'Прекрасное место для отдыха в Псковской области') }}{% endblock %}
 {% block og_type %}website{% endblock %}
@@ -224,21 +230,21 @@
             <div class="col-6 col-md-3 mb-3">
                 <div class="info-card text-center">
                     <i class="bi bi-people-fill info-icon"></i>
-                    <div class="info-value">{{ property.capacity }}</div>
+                    <div class="info-value">до {{ property.capacity }}</div>
                     <div class="info-label">гостей</div>
                 </div>
             </div>
             <div class="col-6 col-md-3 mb-3">
                 <div class="info-card text-center">
                     <i class="bi bi-currency-ruble info-icon"></i>
-                    <div class="info-value">{{ property.price_per_night|format_price }}</div>
+                    <div class="info-value">от {{ property.price_per_night|format_price }}</div>
                     <div class="info-label">руб/ночь</div>
                 </div>
             </div>
             <div class="col-6 col-md-3 mb-3">
                 <div class="info-card text-center">
                     <i class="bi bi-calendar-check info-icon"></i>
-                    <div class="info-value">Доступен</div>
+                    <div class="info-value">{% if property.is_available %}Доступен{% else %}Недоступен{% endif %}</div>
                     <div class="info-label">для бронирования</div>
                 </div>
             </div>
@@ -286,6 +292,20 @@
                     </div>
                 </div>
                 {% endif %}
+
+                <!-- SEO Keywords Display -->
+                {% if property.seo_keywords %}
+                <div class="mt-5">
+                    <h4 class="h5 mb-3 text-muted">Теги объекта:</h4>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for keyword in property.seo_keywords.split(',') %}
+                            {% if keyword.strip() %}
+                            <span class="badge bg-light text-dark border p-2">{{ keyword.strip() }}</span>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
             </div>
             </div>
         </div>
@@ -301,16 +321,23 @@
                         </div>
                         <div class="d-md-none">
                             <div class="small text-light opacity-75">Цена за ночь</div>
-                            <div class="fw-bold text-white h5 mb-0">{{ property.price_per_night|format_price }} ₽</div>
+                            <div class="fw-bold text-white h5 mb-0">от {{ property.price_per_night|format_price }} ₽</div>
                         </div>
                     </div>
                     
                     <div class="d-flex align-items-center gap-3 flex-grow-1 justify-content-end ms-2 ms-md-0">
                         <div class="text-end me-3 d-none d-md-block">
                             <div class="small text-light opacity-75">Цена за ночь</div>
-                            <div class="fw-bold text-white h4 mb-0">{{ property.price_per_night|format_price }} ₽</div>
+                            <div class="fw-bold text-white h4 mb-0">от {{ property.price_per_night|format_price }} ₽</div>
                         </div>
-                        {% if not current_user_obj or (current_user_obj and not current_user_obj.is_email_verified) %}
+                        {% if not property.is_available %}
+                        <button class="btn btn-secondary d-none d-md-inline-block px-5 btn-lg shadow-lg" disabled>
+                            Временно недоступен
+                        </button>
+                        <button class="btn btn-secondary d-md-none w-100 py-3 shadow-lg fw-bold" disabled>
+                            Временно недоступен
+                        </button>
+                        {% elif not current_user_obj or (current_user_obj and not current_user_obj.is_email_verified) %}
                         <button class="btn btn-secondary d-none d-md-inline-block px-5 btn-lg shadow-lg" disabled>
                             {% if not current_user_obj %}Войдите для бронирования{% else %}Подтвердите email{% endif %}
                         </button>
