@@ -204,5 +204,59 @@
     </script>
     
     {% block extra_js %}{% endblock %}
+
+    <!-- Map Modal -->
+    <div class="modal fade" id="mapModal" tabindex="-1" aria-labelledby="mapModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="mapModalLabel">Карта</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="map" style="height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var mapModal = document.getElementById('mapModal');
+            var map;
+            mapModal.addEventListener('shown.bs.modal', function (event) {
+                var button = event.relatedTarget;
+                var lat = parseFloat(button.getAttribute('data-lat'));
+                var lon = parseFloat(button.getAttribute('data-lon'));
+                var name = button.getAttribute('data-name');
+
+                if (!map) {
+                    map = L.map('map').setView([lat, lon], 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    }).addTo(map);
+                } else {
+                    map.setView([lat, lon], 13);
+                }
+
+                // Clear existing markers
+                map.eachLayer(function (layer) {
+                    if (layer instanceof L.Marker) {
+                        map.removeLayer(layer);
+                    }
+                });
+
+                L.marker([lat, lon]).addTo(map)
+                    .bindPopup(name)
+                    .openPopup();
+                
+                setTimeout(function() {
+                    map.invalidateSize();
+                }, 400);
+            });
+        });
+    </script>
 </body>
 </html>

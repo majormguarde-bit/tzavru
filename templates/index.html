@@ -221,6 +221,11 @@
                                 Недоступен
                             </a>
                             {% endif %}
+                            {% if property.latitude and property.longitude %}
+                            <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#mapModal" data-lat="{{ property.latitude }}" data-lon="{{ property.longitude }}" data-name="{{ property.name }}" title="Показать на карте">
+                                <i class="bi bi-map"></i>
+                            </button>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
