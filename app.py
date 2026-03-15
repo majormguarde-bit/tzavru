@@ -4031,8 +4031,51 @@ def admin_property_edit(property_id):
             
     property_characteristics = {pc.characteristic_type_id: pc.value for pc in PropertyCharacteristic.query.filter_by(property_id=property.id).all()}
     selected_option_ids = [po.option_type_id for po in property.property_options]
+    
+    # Process images to add metadata
+    gallery_images = []
+    
+    # 1. Main image
+    if property.image_url:
+        img_info = {'url': property.image_url, 'is_main': True}
+        # Try to get file stats
+        if property.image_url.startswith('/static/uploads/'):
+            filename = property.image_url.replace('/static/uploads/', '')
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            if os.path.exists(filepath):
+                try:
+                    img_info['size'] = os.path.getsize(filepath)
+                    from PIL import Image
+                    with Image.open(filepath) as img:
+                        img_info['width'], img_info['height'] = img.size
+                    img_info['filename'] = filename
+                except Exception as e:
+                    print(f"Error getting image stats for {filename}: {e}")
+        gallery_images.append(img_info)
+        
+    # 2. Gallery images
+    if property.gallery_urls:
+        try:
+            urls = json.loads(property.gallery_urls)
+            for url in urls:
+                img_info = {'url': url, 'is_main': False}
+                if url.startswith('/static/uploads/'):
+                    filename = url.replace('/static/uploads/', '')
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    if os.path.exists(filepath):
+                        try:
+                            img_info['size'] = os.path.getsize(filepath)
+                            from PIL import Image
+                            with Image.open(filepath) as img:
+                                img_info['width'], img_info['height'] = img.size
+                            img_info['filename'] = filename
+                        except Exception as e:
+                            print(f"Error getting image stats for {filename}: {e}")
+                gallery_images.append(img_info)
+        except json.JSONDecodeError:
+            pass
             
-    return render_template('admin/edit_property.html', property=property, unique_types=unique_types, current_type_name=current_type_name, all_options=all_options, all_characteristics=all_characteristics, property_characteristics=property_characteristics, selected_option_ids=selected_option_ids)
+    return render_template('admin/edit_property.html', property=property, unique_types=unique_types, current_type_name=current_type_name, all_options=all_options, all_characteristics=all_characteristics, property_characteristics=property_characteristics, selected_option_ids=selected_option_ids, gallery_images=gallery_images)
 
 @app.route('/admin/properties/delete/<int:property_id>', methods=['POST'])
 @admin_required
