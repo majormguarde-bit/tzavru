@@ -4053,6 +4053,15 @@ def admin_property_edit(property_id):
         app.logger.info(debug_msg)
         debug_info.append(debug_msg)  # Добавляем в список отладочной информации
         
+        # Исправляем URL, убирая лишний путь /cgi-bin/wsgi.py если он есть
+        original_url = url
+        if '/cgi-bin/wsgi.py' in url:
+            url = url.replace('/cgi-bin/wsgi.py', '')
+            debug_msg = f"=== DEBUG Fixed URL: {original_url} -> {url}"
+            print(debug_msg)
+            app.logger.info(debug_msg)
+            debug_info.append(debug_msg)
+        
         # Check if URL starts with the static prefix
         prefix = '/static/uploads/'
         if url.startswith(prefix):
