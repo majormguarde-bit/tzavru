@@ -4035,13 +4035,20 @@ def admin_property_edit(property_id):
     # Process images to add metadata
     gallery_images = []
     
-    # 1. Main image
-    if property.image_url:
-        img_info = {'url': property.image_url, 'is_main': True}
-        # Try to get file stats
-        if property.image_url.startswith('/static/uploads/'):
-            filename = property.image_url.replace('/static/uploads/', '')
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    def get_image_info(url, is_main=False):
+        img_info = {'url': url, 'is_main': is_main}
+        
+        # Check if URL starts with the static prefix
+        prefix = '/static/uploads/'
+        if url.startswith(prefix):
+            # Extract filename and unquote it in case there are URL-encoded characters (like spaces %20)
+            from urllib.parse import unquote
+            filename = unquote(url[len(prefix):])
+            
+            # Use os.path.join with app.root_path to build a robust absolute path
+            # This works correctly on both Windows and Linux hosting
+            filepath = os.path.join(app.root_path, 'static', 'uploads', filename)
+            
             if os.path.exists(filepath):
                 try:
                     img_info['size'] = os.path.getsize(filepath)
@@ -4050,28 +4057,22 @@ def admin_property_edit(property_id):
                         img_info['width'], img_info['height'] = img.size
                     img_info['filename'] = filename
                 except Exception as e:
-                    print(f"Error getting image stats for {filename}: {e}")
-        gallery_images.append(img_info)
+                    print(f"Error getting image stats for {filepath}: {e}")
+            else:
+                print(f"Image not found on disk: {filepath}")
+                
+        return img_info
+    
+    # 1. Main image
+    if property.image_url:
+        gallery_images.append(get_image_info(property.image_url, is_main=True))
         
     # 2. Gallery images
     if property.gallery_urls:
         try:
             urls = json.loads(property.gallery_urls)
             for url in urls:
-                img_info = {'url': url, 'is_main': False}
-                if url.startswith('/static/uploads/'):
-                    filename = url.replace('/static/uploads/', '')
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    if os.path.exists(filepath):
-                        try:
-                            img_info['size'] = os.path.getsize(filepath)
-                            from PIL import Image
-                            with Image.open(filepath) as img:
-                                img_info['width'], img_info['height'] = img.size
-                            img_info['filename'] = filename
-                        except Exception as e:
-                            print(f"Error getting image stats for {filename}: {e}")
-                gallery_images.append(img_info)
+                gallery_images.append(get_image_info(url, is_main=False))
         except json.JSONDecodeError:
             pass
             
