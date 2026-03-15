@@ -52,9 +52,17 @@
         <div class="property-breadcrumbs w-100">
             <div class="container">
                 <nav aria-label="breadcrumb" style="pointer-events: auto;">
-                    <ol class="breadcrumb mb-0 py-2 px-3 rounded-3" style="background-color: rgba(0,0,0,0.5); display: inline-flex;">
-                        <li class="breadcrumb-item"><a href="{{ url_for('index') }}" class="text-white text-decoration-none opacity-75 hover-opacity-100">Главная</a></li>
-                        <li class="breadcrumb-item active text-white" aria-current="page">{{ property.name }}</li>
+                    <ol class="breadcrumb mb-0 py-2 px-3 rounded-3" style="background-color: rgba(0,0,0,0.5); display: inline-flex;" itemscope itemtype="https://schema.org/BreadcrumbList">
+                        <li class="breadcrumb-item" itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                            <a href="{{ url_for('index') }}" class="text-white text-decoration-none opacity-75 hover-opacity-100" itemprop="item">
+                                <span itemprop="name">Главная</span>
+                            </a>
+                            <meta itemprop="position" content="1" />
+                        </li>
+                        <li class="breadcrumb-item active text-white" aria-current="page" itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                            <span itemprop="name">{{ property.name }}</span>
+                            <meta itemprop="position" content="2" />
+                        </li>
                     </ol>
                 </nav>
             </div>

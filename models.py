@@ -15,6 +15,7 @@ class User(UserMixin, db.Model):
     can_create_properties = db.Column(db.Boolean, default=True)
     can_edit_properties = db.Column(db.Boolean, default=True)
     can_delete_properties = db.Column(db.Boolean, default=True)
+    can_access_general_settings = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_email_verified = db.Column(db.Boolean, default=False)
     email_verification_token = db.Column(db.String(100))
@@ -287,6 +288,7 @@ class SiteSettings(db.Model):
     sbp_deposit_percent = db.Column(db.Integer, default=30)
     email_info = db.Column(db.String(120), default="info@imperial-collection.ru")
     address = db.Column(db.String(200), default="Псковская область, Россия")
+    working_hours = db.Column(db.String(100), default="Ежедневно с 9:00 до 21:00")
     
     # Social links
     social_vk = db.Column(db.String(200))

@@ -2655,6 +2655,11 @@ def sitemap():
     
     return Response('\n'.join(sitemap_xml), mimetype='application/xml')
 
+@app.route('/robots.txt')
+def robots():
+    """Serve robots.txt from root"""
+    return send_from_directory(app.root_path, 'robots.txt')
+
 def send_booking_final_confirmation_email(booking):
     """Отправляет email с финальным подтверждением бронирования"""
     try:
@@ -3401,6 +3406,7 @@ def admin_admin_add():
         can_create_properties = 'can_create_properties' in request.form
         can_edit_properties = 'can_edit_properties' in request.form
         can_delete_properties = 'can_delete_properties' in request.form
+        can_access_general_settings = 'can_access_general_settings' in request.form
 
         if not username or not email or not password:
             flash('Заполните username, email и пароль.', 'error')
@@ -3423,7 +3429,8 @@ def admin_admin_add():
             is_superadmin=False,
             can_create_properties=can_create_properties,
             can_edit_properties=can_edit_properties,
-            can_delete_properties=can_delete_properties
+            can_delete_properties=can_delete_properties,
+            can_access_general_settings=can_access_general_settings
         )
         db.session.add(admin_user)
         db.session.commit()
@@ -3494,6 +3501,7 @@ def admin_admin_edit(user_id):
         admin_user.can_create_properties = 'can_create_properties' in request.form
         admin_user.can_edit_properties = 'can_edit_properties' in request.form
         admin_user.can_delete_properties = 'can_delete_properties' in request.form
+        admin_user.can_access_general_settings = 'can_access_general_settings' in request.form
 
         if new_password:
             admin_user.password_hash = generate_password_hash(new_password)
@@ -5074,9 +5082,17 @@ def admin_contact_process(request_id):
 from PIL import Image
 import io
 
-@app.route('/admin/settings', methods=['GET', 'POST'])
-@superadmin_required
-def admin_settings():
+@app.route('/admin/general-settings', methods=['GET', 'POST'])
+@admin_required
+def admin_general_settings():
+    user = get_current_admin()
+    if not user:
+        flash('Требуется авторизация', 'error')
+        return redirect(url_for('login'))
+    if not user.is_superadmin and not getattr(user, 'can_access_general_settings', False):
+        flash('Недостаточно прав для доступа к разделу «Общие настройки».', 'error')
+        return redirect(url_for('admin_dashboard'))
+
     settings = SiteSettings.query.first()
     if not settings:
         settings = SiteSettings()
@@ -5098,32 +5114,12 @@ def admin_settings():
         settings.sbp_deposit_percent = sbp_deposit_percent
         settings.email_info = request.form.get('email_info', '')
         settings.address = request.form.get('address', '')
+        settings.working_hours = request.form.get('working_hours', '')
         
         # Social links
         settings.social_vk = request.form.get('social_vk', '')
         settings.social_telegram = request.form.get('social_telegram', '')
         settings.social_whatsapp = request.form.get('social_whatsapp', '')
-        
-        # Mail settings
-        settings.smtp_server = request.form.get('smtp_server', '')
-        settings.smtp_port = int(request.form.get('smtp_port', 587))
-        settings.smtp_username = request.form.get('smtp_username', '')
-        settings.smtp_password = request.form.get('smtp_password', '')
-        settings.smtp_use_tls = 'smtp_use_tls' in request.form
-
-        settings.incoming_mail_server = request.form.get('incoming_mail_server', '')
-        incoming_mail_port_raw = (request.form.get('incoming_mail_port') or '').strip()
-        try:
-            settings.incoming_mail_port = int(incoming_mail_port_raw) if incoming_mail_port_raw else 993
-        except ValueError:
-            settings.incoming_mail_port = 993
-        settings.incoming_mail_login = request.form.get('incoming_mail_login', '')
-        settings.incoming_mail_password = request.form.get('incoming_mail_password', '')
-        settings.incoming_mail_use_ssl = 'incoming_mail_use_ssl' in request.form
-        
-        # SMS settings
-        settings.sms_api_id = request.form.get('sms_api_id', '')
-        settings.sms_enabled = 'sms_enabled' in request.form
         
         # Handle Logo Upload
         if 'logo' in request.files:
@@ -5158,18 +5154,61 @@ def admin_settings():
                     flash(f'Ошибка обработки логотипа: {e}', 'error')
         
         db.session.commit()
-        flash('Настройки сохранены', 'success')
-        return redirect(url_for('admin_settings'))
+        flash('Общие настройки сохранены', 'success')
+        return redirect(url_for('admin_general_settings'))
         
-    return render_template('admin/settings.html', settings=settings)
+    return render_template('admin/settings1.html', settings=settings, page_kind='general')
 
-@app.route('/admin/settings/test-email', methods=['POST'])
+
+@app.route('/admin/system/settings', methods=['GET', 'POST'])
+@superadmin_required
+def admin_system_settings():
+    settings = SiteSettings.query.first()
+    if not settings:
+        settings = SiteSettings()
+        db.session.add(settings)
+        db.session.commit()
+
+    if request.method == 'POST':
+        # Mail settings
+        settings.smtp_server = request.form.get('smtp_server', '')
+        smtp_port_raw = (request.form.get('smtp_port') or '').strip()
+        try:
+            settings.smtp_port = int(smtp_port_raw) if smtp_port_raw else 587
+        except ValueError:
+            settings.smtp_port = 587
+        settings.smtp_username = request.form.get('smtp_username', '')
+        settings.smtp_password = request.form.get('smtp_password', '')
+        settings.smtp_use_tls = 'smtp_use_tls' in request.form
+
+        # Incoming Mail settings (IMAP)
+        settings.incoming_mail_server = request.form.get('incoming_mail_server', '')
+        incoming_mail_port_raw = (request.form.get('incoming_mail_port') or '').strip()
+        try:
+            settings.incoming_mail_port = int(incoming_mail_port_raw) if incoming_mail_port_raw else 993
+        except ValueError:
+            settings.incoming_mail_port = 993
+        settings.incoming_mail_login = request.form.get('incoming_mail_login', '')
+        settings.incoming_mail_password = request.form.get('incoming_mail_password', '')
+        settings.incoming_mail_use_ssl = 'incoming_mail_use_ssl' in request.form
+
+        # SMS settings
+        settings.sms_api_id = request.form.get('sms_api_id', '')
+        settings.sms_enabled = 'sms_enabled' in request.form
+
+        db.session.commit()
+        flash('Системные настройки сохранены', 'success')
+        return redirect(url_for('admin_system_settings'))
+
+    return render_template('admin/settings1.html', settings=settings, page_kind='system')
+
+@app.route('/admin/system/settings/test-email', methods=['POST'])
 @superadmin_required
 def admin_test_email():
     email = request.form.get('test_email')
     if not email:
         flash('Введите email для теста', 'error')
-        return redirect(url_for('admin_settings'))
+        return redirect(url_for('admin_system_settings'))
     
     try:
         settings = SiteSettings.query.first()
@@ -5185,16 +5224,16 @@ def admin_test_email():
     except Exception as e:
         flash(f'Ошибка отправки: {e}', 'error')
         
-    return redirect(url_for('admin_settings'))
+    return redirect(url_for('admin_system_settings'))
 
-@app.route('/admin/settings/check-mail', methods=['POST'])
+@app.route('/admin/system/settings/check-mail', methods=['POST'])
 @superadmin_required
 def admin_check_mail():
     try:
         settings = SiteSettings.query.first()
         if (not settings or not settings.incoming_mail_server or not settings.incoming_mail_login or not settings.incoming_mail_password):
             flash('Настройки входящей почты (IMAP) не заполнены.', 'error')
-            return redirect(url_for('admin_settings'))
+            return redirect(url_for('admin_system_settings'))
 
         codes = check_incoming_mail_for_test_codes()
         unique_codes = sorted(set(codes))
@@ -5205,7 +5244,7 @@ def admin_check_mail():
     except Exception as e:
         flash(f'Ошибка запуска проверки: {e}', 'error')
         
-    return redirect(url_for('admin_settings'))
+    return redirect(url_for('admin_system_settings'))
 
 @app.route('/admin/activity-log')
 @superadmin_required
@@ -5309,12 +5348,12 @@ def admin_visitor_activity_log():
                          end_date=end_date_str,
                          selected_action=action_type)
 
-@app.route('/admin/settings/reset-db', methods=['POST'])
+@app.route('/admin/system/settings/reset-db', methods=['POST'])
 @superadmin_required
 def admin_reset_db():
     if request.form.get('confirm') != 'yes':
         flash('Для сброса базы данных необходимо подтверждение.', 'error')
-        return redirect(url_for('admin_settings'))
+        return redirect(url_for('admin_system_settings'))
         
     try:
         # Clear all tables in correct order (dependent first)
@@ -5358,7 +5397,7 @@ def admin_reset_db():
         db.session.rollback()
         print(f"Error resetting database: {e}")
         flash(f'Ошибка при сбросе базы данных: {str(e)}', 'error')
-        return redirect(url_for('admin_settings'))
+        return redirect(url_for('admin_system_settings'))
 
 @app.route('/admin/dictionaries/property-types')
 @admin_required

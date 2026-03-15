@@ -1,8 +1,12 @@
 import os
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+if load_dotenv:
+    load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 
 class Config:
